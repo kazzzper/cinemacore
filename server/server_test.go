@@ -36,10 +36,13 @@ func (stubProvider) Stream(context.Context, string, int, int) (models.Stream, er
 		Qualities: []models.Quality{{Label: "Auto", URL: "https://cdn.example/auto.m3u8"}},
 	}, nil
 }
-func (stubProvider) Subtitles(context.Context, string) ([]models.Subtitle, error) {
+func (stubProvider) Subtitles(context.Context, string, int) ([]models.Subtitle, error) {
 	return []models.Subtitle{
 		{Lang: "English", URL: "https://cdn.example/en.vtt", Format: "vtt"},
 	}, nil
+}
+func (stubProvider) Suggest(_ context.Context, q string) ([]string, error) {
+	return []string{q}, nil
 }
 
 func newTestServer() http.Handler {
@@ -184,7 +187,7 @@ func TestSuggestions_RequiresQuery(t *testing.T) {
 	}
 }
 
-func TestSuggestions_DerivesFromSearch(t *testing.T) {
+func TestSuggestions_FromProvider(t *testing.T) {
 	rec := httptest.NewRecorder()
 	newTestServer().ServeHTTP(
 		rec, httptest.NewRequest(http.MethodGet, "/v1/search/suggestions?q=dune", nil),

@@ -96,9 +96,9 @@ func (c *Catalog) Stream(ctx context.Context, id string, season, episode int) (m
 	})
 }
 
-// Subtitles returns the first provider that resolves id.
-func (c *Catalog) Subtitles(ctx context.Context, id string) ([]models.Subtitle, error) {
-	return c.first(func(p provider.Provider) ([]models.Subtitle, error) { return p.Subtitles(ctx, id) })
+// Subtitles returns the first provider that resolves id for one episode.
+func (c *Catalog) Subtitles(ctx context.Context, id string, episode int) ([]models.Subtitle, error) {
+	return c.first(func(p provider.Provider) ([]models.Subtitle, error) { return p.Subtitles(ctx, id, episode) })
 }
 
 // Play composes a subject's stream renditions and subtitle tracks. Streams are
@@ -109,7 +109,7 @@ func (c *Catalog) Play(ctx context.Context, id string, season, episode int) (mod
 		return models.PlayInfo{}, err
 	}
 	info := models.PlayInfo{Streams: renditions(stream), Subtitles: []models.SubtitleTrack{}}
-	if subs, err := c.Subtitles(ctx, id); err == nil {
+	if subs, err := c.Subtitles(ctx, id, episode); err == nil {
 		for _, s := range subs {
 			info.Subtitles = append(info.Subtitles, models.SubtitleTrack{
 				Language: s.Lang, URL: s.URL, Format: s.Format,
@@ -119,19 +119,27 @@ func (c *Catalog) Play(ctx context.Context, id string, season, episode int) (mod
 	return info, nil
 }
 
-// Suggestions returns type-ahead terms for a query, derived from search results.
+// Suggestions returns type-ahead terms for a query from the first provider that
+// answers, falling back to the query's own search titles.
 func (c *Catalog) Suggestions(ctx context.Context, q string) ([]string, error) {
-	items, err := c.Search(ctx, q)
-	if err != nil {
-		return nil, err
+	terms, err := c.first(func(p provider.Provider) ([]string, error) { return p.Suggest(ctx, q) })
+	if err == nil && len(terms) > 0 {
+		return terms, nil
 	}
-	terms := make([]string, 0, len(items))
+	items, serr := c.Search(ctx, q)
+	if serr != nil {
+		if err != nil {
+			return nil, err
+		}
+		return nil, serr
+	}
+	titles := make([]string, 0, len(items))
 	for _, s := range items {
 		if s.Title != "" {
-			terms = append(terms, s.Title)
+			titles = append(titles, s.Title)
 		}
 	}
-	return terms, nil
+	return titles, nil
 }
 
 // renditions flattens a stream's qualities, falling back to the bare URL.

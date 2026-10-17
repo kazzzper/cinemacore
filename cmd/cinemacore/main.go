@@ -29,7 +29,6 @@ func main() {
 	client := session.New(session.Config{
 		Hosts:      hostList(),
 		ClientInfo: clientInfo(),
-		UserAgent:  "okhttp/4.11.0",
 	})
 	// Guest bootstrap must not block startup: the gateway may be unreachable.
 	go func() {
@@ -77,18 +76,26 @@ func hostList() []string {
 	return defaultHosts
 }
 
-// clientInfo mirrors the official app's device metadata envelope.
+// clientInfo mirrors the official app's device metadata envelope. The gateway
+// filters on it, so the fields (and the region/MCC pair) matter.
 func clientInfo() string {
 	info := map[string]any{
-		"package_name": "com.community.oneroom",
-		"version_name": "4.0.02",
-		"version_code": 50020126,
-		"os":           "android",
-		"os_version":   "14",
-		"brand":        "Google",
-		"model":        "Pixel 6",
-		"region":       "IN",
-		"sp_code":      "404",
+		"package_name":    "com.community.oneroom",
+		"version_name":    "4.0.02",
+		"version_code":    50020126,
+		"os":              "android",
+		"os_version":      "14",
+		"install_ch":      "ps",
+		"device_id":       "868203051234567",
+		"install_store":   "ps",
+		"gaid":            "",
+		"brand":           "Google",
+		"model":           "Pixel 6",
+		"system_language": "en",
+		"net":             "wifi",
+		"region":          "IN",
+		"timezone":        "Asia/Kolkata",
+		"sp_code":         "404",
 	}
 	b, _ := json.Marshal(info)
 	return string(b)
