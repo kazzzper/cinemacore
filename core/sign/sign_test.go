@@ -1,75 +1,153 @@
 package sign
 
-import "testing"
+import (
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+)
 
-// Golden vectors generated from the reference implementation
-// (moviebox-internal-api/moviebox_api/utils.py). One byte of drift here breaks
-// every signed request, so these are the P1 gate.
+// The golden vectors live in contracts/signing-vectors.json and are shared with
+// the Swift implementation (CinemacoreCore/Tests). One byte of drift breaks
+// every signed request, so this file is the P1 gate for both surfaces: keeping
+// the vectors in one place is what stops the two implementations diverging
+// silently.
+
+type trCase struct {
+	Name            string `json:"name"`
+	Method          string `json:"method"`
+	URL             string `json:"url"`
+	Body            string `json:"body"`
+	BodyRepeatChar  string `json:"bodyRepeatChar"`
+	BodyRepeatCount int    `json:"bodyRepeatCount"`
+	BodyAppend      string `json:"bodyAppend"`
+	TSMillis        int64  `json:"tsMillis"`
+	Expected        string `json:"expected"`
+}
+
+type vectors struct {
+	GatewaySecretBase64   string `json:"gatewaySecretBase64"`
+	BodySignatureMaxBytes int    `json:"bodySignatureMaxBytes"`
+	DefaultAccept         string `json:"defaultAccept"`
+	DefaultContentType    string `json:"defaultContentType"`
+
+	ClientTokens []struct {
+		TSMillis int64  `json:"tsMillis"`
+		Token    string `json:"token"`
+	} `json:"clientTokens"`
+
+	TRSignatures []trCase `json:"trSignatures"`
+
+	GslbSign struct {
+		PackageName string `json:"packageName"`
+		DeviceID    string `json:"deviceID"`
+		Expected    string `json:"expected"`
+	} `json:"gslbSign"`
+
+	PasswordMD5 struct {
+		Input    string `json:"input"`
+		Expected string `json:"expected"`
+	} `json:"passwordMD5"`
+
+	// Canonical-string cases generated from this implementation and asserted by
+	// the Swift suite too, so the two resource() functions cannot drift.
+	ResourceVectors struct {
+		Cases []struct {
+			Input    string `json:"input"`
+			Expected string `json:"expected"`
+		} `json:"cases"`
+	} `json:"resourceVectors"`
+}
+
+// body materialises a case's payload. `bodyRepeatChar`/`bodyRepeatCount` exist
+// so the 102400-byte truncation case does not put a 100 KB literal in the
+// fixture; `bodyAppend` sits deliberately outside the repeated prefix.
+func (c trCase) body() string {
+	if c.BodyRepeatCount > 0 && c.BodyRepeatChar != "" {
+		return strings.Repeat(c.BodyRepeatChar, c.BodyRepeatCount) + c.BodyAppend
+	}
+	return c.Body
+}
+
+func loadVectors(t *testing.T) vectors {
+	t.Helper()
+	path := filepath.Join("..", "..", "contracts", "signing-vectors.json")
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v (Go tests must run from core/sign)", path, err)
+	}
+	var v vectors
+	if err := json.Unmarshal(raw, &v); err != nil {
+		t.Fatalf("parse %s: %v", path, err)
+	}
+	if len(v.ClientTokens) == 0 || len(v.TRSignatures) == 0 {
+		t.Fatalf("%s loaded but is empty", path)
+	}
+	return v
+}
+
+// The fixture must describe the implementation that actually ships; a mismatch
+// here means the shared file has drifted from the compiled-in constants.
+func TestVectorsMatchCompiledConstants(t *testing.T) {
+	v := loadVectors(t)
+	if v.GatewaySecretBase64 != gatewaySecret {
+		t.Errorf("gateway secret: fixture %q, code %q", v.GatewaySecretBase64, gatewaySecret)
+	}
+	if v.BodySignatureMaxBytes != BodySignatureMaxBytes {
+		t.Errorf("body max: fixture %d, code %d", v.BodySignatureMaxBytes, BodySignatureMaxBytes)
+	}
+	if v.DefaultAccept != DefaultAccept {
+		t.Errorf("accept: fixture %q, code %q", v.DefaultAccept, DefaultAccept)
+	}
+	if v.DefaultContentType != DefaultContentType {
+		t.Errorf("content type: fixture %q, code %q", v.DefaultContentType, DefaultContentType)
+	}
+}
+
 func TestClientToken(t *testing.T) {
-	got := ClientToken(1700000000000)
-	want := "1700000000000,e41bb805cc23fdc5541917da93d608d5"
-	if got != want {
-		t.Fatalf("ClientToken = %q, want %q", got, want)
+	for _, tc := range loadVectors(t).ClientTokens {
+		if got := ClientToken(tc.TSMillis); got != tc.Token {
+			t.Errorf("ClientToken(%d) = %q, want %q", tc.TSMillis, got, tc.Token)
+		}
 	}
 }
 
 func TestTRSignature(t *testing.T) {
-	cases := []struct {
-		name, method, url, body string
-		ts                      int64
-		want                    string
-	}{
-		{
-			name: "get with query", method: "GET",
-			url: "https://apig.inmoviebox.com/wefeed-mobile-bff/subject-api/detail?subjectId=123&page=1&tab=0",
-			ts:  1700000000000, want: "1700000000000|2|5i4LuyUxUltzHNIEBhHQVA==",
-		},
-		{
-			name: "post json body", method: "POST",
-			url:  "https://apig.inmoviebox.com/wefeed-mobile-bff/user-api/visitor-login",
-			body: `{"clientInfo":{"package_name":"com.community.oneroom"}}`,
-			ts:   1700000000001, want: "1700000000001|2|M9uRwz5I5tm5vSBI8KEIzg==",
-		},
-		{
-			name: "get no query", method: "GET",
-			url: "https://apig.inmoviebox.com/wefeed-mobile-bff/search",
-			ts:  1700000000002, want: "1700000000002|2|V6DlEMNh1yxoNFQh540fzQ==",
-		},
-		{
-			name: "body truncated at 102400", method: "POST",
-			url:  "https://apig.inmoviebox.com/x",
-			body: repeat("a", 102400) + "TRAILING_MUST_BE_IGNORED",
-			ts:   1700000000003, want: "1700000000003|2|pyBOv/j+5I0FP6C30+yt5Q==",
-		},
-		{
-			name: "duplicate + blank query keys", method: "GET",
-			url: "https://apig.inmoviebox.com/p?b=2&a=1&a=3&c=",
-			ts:  1700000000004, want: "1700000000004|2|vD/OjEvR95UT2iXamt5jbA==",
-		},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			got := TRSignature(tc.method, tc.url, DefaultAccept, DefaultContentType, tc.body, tc.ts)
-			if got != tc.want {
-				t.Fatalf("TRSignature = %q, want %q", got, tc.want)
+	v := loadVectors(t)
+	for _, tc := range v.TRSignatures {
+		t.Run(tc.Name, func(t *testing.T) {
+			got := TRSignature(
+				tc.Method, tc.URL, v.DefaultAccept, v.DefaultContentType, tc.body(), tc.TSMillis,
+			)
+			if got != tc.Expected {
+				t.Fatalf("TRSignature = %q, want %q", got, tc.Expected)
 			}
 		})
 	}
 }
 
 func TestGslbSignAndPassword(t *testing.T) {
-	if got, want := GslbSign("com.community.oneroom", "868203051234567"), "9071b411e7812cd20d564c3b523dda1c1b0abed0e9824273ff59cf3d903bb17d"; got != want {
-		t.Fatalf("GslbSign = %q, want %q", got, want)
+	v := loadVectors(t)
+	if got := GslbSign(v.GslbSign.PackageName, v.GslbSign.DeviceID); got != v.GslbSign.Expected {
+		t.Errorf("GslbSign = %q, want %q", got, v.GslbSign.Expected)
 	}
-	if got, want := PasswordMD5("secret123"), "5d7845ac6ee7cfffafc5fe5f35cf666d"; got != want {
-		t.Fatalf("PasswordMD5 = %q, want %q", got, want)
+	if got := PasswordMD5(v.PasswordMD5.Input); got != v.PasswordMD5.Expected {
+		t.Errorf("PasswordMD5 = %q, want %q", got, v.PasswordMD5.Expected)
 	}
 }
 
-func repeat(s string, n int) string {
-	out := make([]byte, 0, n*len(s))
-	for i := 0; i < n; i++ {
-		out = append(out, s...)
+// These vectors were generated from this function and are asserted by the Swift
+// suite as well: they are what stops the two canonical-string implementations
+// drifting on query decoding, sorting, or path escaping.
+func TestResourceVectors(t *testing.T) {
+	cases := loadVectors(t).ResourceVectors.Cases
+	if len(cases) == 0 {
+		t.Fatal("no resource vectors loaded")
 	}
-	return string(out)
+	for _, tc := range cases {
+		if got := resource(tc.Input); got != tc.Expected {
+			t.Errorf("resource(%q) = %q, want %q", tc.Input, got, tc.Expected)
+		}
+	}
 }

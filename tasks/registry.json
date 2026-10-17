@@ -13,6 +13,20 @@
       "model": null,
       "startedAt": "2026-10-17T15:40:14.783Z",
       "lastSeen": "2026-10-17T15:40:14.784Z"
+    },
+    {
+      "id": "opencode-api",
+      "harness": "opencode",
+      "model": null,
+      "startedAt": "2026-10-17T19:59:46.564Z",
+      "lastSeen": "2026-10-17T20:20:11.135Z"
+    },
+    {
+      "id": "opencode",
+      "harness": "opencode",
+      "model": null,
+      "startedAt": "2026-10-17T21:31:24.602Z",
+      "lastSeen": "2026-10-17T21:31:24.641Z"
     }
   ],
   "tasks": [
@@ -49,27 +63,27 @@
     {
       "id": "T-003",
       "title": "Go session (guest bootstrap, host pool) + provider/moviebox",
-      "status": "todo",
+      "status": "done",
       "module": "core/session",
-      "owner": null,
+      "owner": "opencode-api",
       "deps": [
         "T-002"
       ],
       "acceptance": "signed live calls return data; host failover unit-tested",
-      "updatedAt": "2026-10-17T00:00:00.000Z",
+      "updatedAt": "2026-10-17T20:34:27.691Z",
       "links": []
     },
     {
       "id": "T-004",
       "title": "Go server: auth/browse/search/title + contract conformance",
-      "status": "todo",
+      "status": "done",
       "module": "server",
-      "owner": null,
+      "owner": "opencode-api",
       "deps": [
         "T-002"
       ],
       "acceptance": "contract conformance tests green; serves :8080",
-      "updatedAt": "2026-10-17T00:00:00.000Z",
+      "updatedAt": "2026-10-17T20:13:22.331Z",
       "links": []
     },
     {
@@ -108,21 +122,21 @@
         "T-004"
       ],
       "acceptance": "xtool dev build produces app; six states; iPad split view",
-      "updatedAt": "2026-10-17T15:40:15.038Z",
+      "updatedAt": "2026-10-17T20:59:50.906Z",
       "links": []
     },
     {
       "id": "T-008",
       "title": "gobind facade + swift-nio loopback proxy + TUI repoint",
-      "status": "todo",
+      "status": "doing",
       "module": "mobile/gobind",
-      "owner": null,
+      "owner": "opencode",
       "deps": [
         "T-005",
         "T-007"
       ],
       "acceptance": "offline path works; go test ./... -race green",
-      "updatedAt": "2026-10-17T00:00:00.000Z",
+      "updatedAt": "2026-10-17T21:31:24.890Z",
       "links": []
     }
   ]

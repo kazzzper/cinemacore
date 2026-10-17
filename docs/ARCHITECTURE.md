@@ -3,13 +3,15 @@
 ## Shape
 
 ```
-core/ (Go, pure)  ──►  server/ (HTTP)   ──►  remote clients
-        │
-        ├──►  mobile/gobind  ──►  mobile/{ios,android} (embedded core)
-        └──►  tools/tui (Rust client)
+core/ (Go, pure)  ──►  server/ (HTTP)   ──►  remote clients (iOS, TUI)
 ```
 
 **Dependency rule (CI-enforced):** `core/` imports nothing from `server/`, `mobile/`, or `tools/`. Everything flows inward to `core/`.
+
+Clients reach the core over HTTP. There is deliberately **no `gobind`/embedded-core path**: the iOS app
+signs natively in Swift (`mobile/ios/CinemacoreCore/Sources/CinemacoreCore/Signing.swift`), so no cgo or
+macOS toolchain is required and the algorithm has exactly one implementation per language, pinned by
+`contracts/signing-vectors.json`. See `adr/0002`.
 
 ## Packages
 
@@ -32,8 +34,11 @@ All gateway requests are signed in `core/sign`. The contract was implemented ind
 ## Connectivity ladder (clients)
 
 1. Direct signed request to the remote server (default).
-2. Embedded Go core via `gobind` for offline / signing-sensitive flows.
-3. Loopback HTTP proxy (swift-nio on iOS, Kotlin on Android) only when 1–2 cannot work.
+2. Loopback HTTP proxy (swift-nio on iOS, Kotlin on Android) only when 1 cannot work.
+
+Media and subtitle requests are **not** routed through either: the CDN expects only a `User-Agent` and
+the per-rendition `Cookie`, so they are fetched directly with header fields. The loopback proxy exists
+for signing-sensitive API flows, not for playback.
 
 ## Further reading
 

@@ -2,11 +2,15 @@ package moviebox
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
+	"sync/atomic"
 	"testing"
 
+	"github.com/solo12345689/cinemacore/core/models"
 	"github.com/solo12345689/cinemacore/core/session"
 )
 
@@ -19,11 +23,35 @@ const subjectJSON = `{
   "resourceDetectors":[{"resourceId":"r1","source":"example.cdn"}]
 }`
 
-// stubGateway serves the canned gateway envelopes for every provider path.
-func stubGateway() *httptest.Server {
+// gatewayStub is the canned gateway the provider is pointed at. An empty home
+// payload makes that route answer 404, which is how the fallback chain is
+// exercised without a live network.
+type gatewayStub struct {
+	tab     string
+	getList string
+
+	tabCalls     atomic.Int32
+	getListCalls atomic.Int32
+}
+
+func stubGateway(stub *gatewayStub) *httptest.Server {
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		switch {
+		case strings.HasSuffix(r.URL.Path, "/home/v2/get-list"):
+			stub.getListCalls.Add(1)
+			if stub.getList == "" {
+				http.NotFound(w, r)
+				return
+			}
+			_, _ = w.Write([]byte(stub.getList))
+		case strings.HasSuffix(r.URL.Path, "/tab-operating"):
+			stub.tabCalls.Add(1)
+			if stub.tab == "" {
+				http.NotFound(w, r)
+				return
+			}
+			_, _ = w.Write([]byte(stub.tab))
 		case strings.HasSuffix(r.URL.Path, "/daily-movie-rec"):
 			_, _ = w.Write([]byte(`{"code":0,"data":{"items":[` + subjectJSON + `]}}`))
 		case strings.HasSuffix(r.URL.Path, "/search"):
@@ -49,8 +77,75 @@ func newProvider(t *testing.T, srv *httptest.Server) *Provider {
 	return New(session.New(session.Config{Hosts: []string{srv.URL}}))
 }
 
-func TestHomeMapsItems(t *testing.T) {
-	srv := stubGateway()
+// homeFixture reads a recorded upstream payload from testdata.
+func homeFixture(t *testing.T, name string) string {
+	t.Helper()
+	b, err := os.ReadFile("testdata/" + name)
+	if err != nil {
+		t.Fatalf("read fixture: %v", err)
+	}
+	return string(b)
+}
+
+// TestHomeMapsUpstreamRails is the guard for the rail layout: one Section per
+// non-empty upstream row, in upstream order, with the upstream titles.
+func TestHomeMapsUpstreamRails(t *testing.T) {
+	srv := stubGateway(&gatewayStub{tab: homeFixture(t, "tab-operating.json")})
+	defer srv.Close()
+
+	page, err := newProvider(t, srv).Home(context.Background())
+	if err != nil {
+		t.Fatalf("Home: %v", err)
+	}
+	// "Categories" (FILTER) and "Movies in Minutes" (POST_LIST, UGC posts) carry
+	// no subject and must not become blank sections.
+	want := []struct {
+		title string
+		items int
+	}{
+		{"IN Banner", 1},
+		{"Trending Movies", 2},
+		{"Gems for you", 3},
+		{"🔥Trending Now", 2},
+	}
+	if len(page.Sections) != len(want) {
+		t.Fatalf("sections = %d (%+v), want %d", len(page.Sections), titles(page.Sections), len(want))
+	}
+	for i, w := range want {
+		if page.Sections[i].Title != w.title || len(page.Sections[i].Items) != w.items {
+			t.Errorf("section[%d] = %q items=%d, want %q items=%d",
+				i, page.Sections[i].Title, len(page.Sections[i].Items), w.title, w.items)
+		}
+	}
+
+	// The banner card is a wrapper around a real subject; its id must be the
+	// subject's, not the teaser's.
+	banner := page.Sections[0].Items[0]
+	if banner.ID != "3908280950886646112" || banner.Title != "VisionQuest [Hindi]" {
+		t.Errorf("banner subject = %+v", banner)
+	}
+	// rankingListData nests its subjects one level deeper.
+	ranked := page.Sections[1].Items[0]
+	if ranked.ID != "9107376937579734040" || ranked.Title != "DC [Hindi]" || ranked.Kind != "movie" {
+		t.Errorf("ranked subject = %+v", ranked)
+	}
+	if ranked.DurationMinutes != 150 || ranked.Rating != 8.1 || ranked.Year != 2026 {
+		t.Errorf("ranked scalars = %+v", ranked)
+	}
+	// The layout carries duration in "seconds", and genres as one comma string.
+	gems := page.Sections[2].Items[0]
+	if gems.Title != "Sleepy Princess in the Demon Castle [English]" || gems.Kind != "series" {
+		t.Errorf("gems subject = %+v", gems)
+	}
+	if len(gems.Genres) != 3 || gems.Genres[0] != "Anime" {
+		t.Errorf("gems genres = %v", gems.Genres)
+	}
+}
+
+// TestHomeFallsBackToDailyRec covers the last-resort feed: when both layout
+// routes fail, daily-movie-rec still answers, as the single "Top Picks" rail.
+func TestHomeFallsBackToDailyRec(t *testing.T) {
+	srv := stubGateway(&gatewayStub{})
 	defer srv.Close()
 
 	page, err := newProvider(t, srv).Home(context.Background())
@@ -81,8 +176,55 @@ func TestHomeMapsItems(t *testing.T) {
 	}
 }
 
+// TestHomePrefersGetListRails checks the documented route wins when a cluster
+// serves it, using the rail shape the reference proxy produces.
+func TestHomePrefersGetListRails(t *testing.T) {
+	stub := &gatewayStub{
+		getList: `{"code":0,"data":{"list":[{"title":"Movies","items":[` + subjectJSON + `]}]}}`,
+		tab:     homeFixture(t, "tab-operating.json"),
+	}
+	srv := stubGateway(stub)
+	defer srv.Close()
+
+	page, err := newProvider(t, srv).Home(context.Background())
+	if err != nil {
+		t.Fatalf("Home: %v", err)
+	}
+	if len(page.Sections) != 1 || page.Sections[0].Title != "Movies" || page.Sections[0].Items[0].ID != "42" {
+		t.Fatalf("sections = %+v", page.Sections)
+	}
+	if n := stub.tabCalls.Load(); n != 0 {
+		t.Errorf("tab-operating called %d times, want 0", n)
+	}
+	if n := stub.getListCalls.Load(); n != 1 {
+		t.Errorf("get-list called %d times, want 1", n)
+	}
+}
+
+// TestToSubjectReadsLayoutOnlyFields guards the tolerant mapping the layout
+// relies on: a string kind, a seasonCount, a "seconds" duration and the
+// protocol-relative poster URL some endpoints return.
+func TestToSubjectReadsLayoutOnlyFields(t *testing.T) {
+	var w wireSubject
+	raw := `{"subjectId":"7","kind":"series","seasonCount":3,"name":"Fallback Name",
+	         "seconds":1800,"cover":{"url":"//cdn.example/p.jpg"}}`
+	if err := json.Unmarshal([]byte(raw), &w); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	s := w.toSubject()
+	if s.ID != "7" || s.Title != "Fallback Name" || s.Kind != "series" {
+		t.Fatalf("subject = %+v", s)
+	}
+	if s.Poster != "https://cdn.example/p.jpg" {
+		t.Errorf("poster = %q, want https://cdn.example/p.jpg", s.Poster)
+	}
+	if s.SeasonCount != 3 || s.DurationMinutes != 30 {
+		t.Errorf("seasonCount=%d durationMinutes=%d, want 3 and 30", s.SeasonCount, s.DurationMinutes)
+	}
+}
+
 func TestEpisodesExpandsAllEpAndMaxEp(t *testing.T) {
-	srv := stubGateway()
+	srv := stubGateway(&gatewayStub{})
 	defer srv.Close()
 
 	eps, err := newProvider(t, srv).Episodes(context.Background(), "42")
@@ -104,7 +246,7 @@ func TestEpisodesExpandsAllEpAndMaxEp(t *testing.T) {
 }
 
 func TestStreamMapsRenditions(t *testing.T) {
-	srv := stubGateway()
+	srv := stubGateway(&gatewayStub{})
 	defer srv.Close()
 
 	s, err := newProvider(t, srv).Stream(context.Background(), "42", 1, 1)
@@ -123,7 +265,7 @@ func TestStreamMapsRenditions(t *testing.T) {
 }
 
 func TestSubtitlesFromExtCaptions(t *testing.T) {
-	srv := stubGateway()
+	srv := stubGateway(&gatewayStub{})
 	defer srv.Close()
 
 	subs, err := newProvider(t, srv).Subtitles(context.Background(), "42", 1)
@@ -136,7 +278,7 @@ func TestSubtitlesFromExtCaptions(t *testing.T) {
 }
 
 func TestSuggestReturnsWords(t *testing.T) {
-	srv := stubGateway()
+	srv := stubGateway(&gatewayStub{})
 	defer srv.Close()
 
 	terms, err := newProvider(t, srv).Suggest(context.Background(), "dune")
@@ -148,6 +290,19 @@ func TestSuggestReturnsWords(t *testing.T) {
 	}
 }
 
+func TestSearchMapsItems(t *testing.T) {
+	srv := stubGateway(&gatewayStub{})
+	defer srv.Close()
+
+	items, err := newProvider(t, srv).Search(context.Background(), "dune")
+	if err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	if len(items) != 1 || items[0].ID != "42" || items[0].Kind != "series" {
+		t.Fatalf("items = %+v", items)
+	}
+}
+
 func TestDurationMinutesFallsBackToHuman(t *testing.T) {
 	if got := durationMinutes(0, "1h 33m"); got != 93 {
 		t.Errorf("durationMinutes(1h 33m) = %d, want 93", got)
@@ -155,4 +310,12 @@ func TestDurationMinutesFallsBackToHuman(t *testing.T) {
 	if got := durationMinutes(0, "45m"); got != 45 {
 		t.Errorf("durationMinutes(45m) = %d, want 45", got)
 	}
+}
+
+func titles(sections []models.Section) []string {
+	out := make([]string, 0, len(sections))
+	for _, s := range sections {
+		out = append(out, s.Title)
+	}
+	return out
 }

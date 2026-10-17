@@ -9,6 +9,11 @@ public protocol LibraryStoring: Sendable {
     func watchlist() async -> [WatchlistEntry]
     func isInWatchlist(subjectID: String) async -> Bool
     /// Toggling keeps the UI's single "bookmark" affordance honest.
+    ///
+    /// The result is routinely discarded, and the attribute must sit on the
+    /// requirement — on the conformances alone, callers through the protocol
+    /// still warn.
+    @discardableResult
     func toggleWatchlist(_ subject: Subject) async -> Bool
     func removeFromWatchlist(subjectID: String) async
     func clearWatchlist() async
@@ -39,6 +44,11 @@ public struct LibrarySettings: Codable, Hashable, Sendable {
     public var playbackSpeed: Double
     /// Autoplay the next episode when one finishes.
     public var autoPlayNext: Bool
+    /// How the Downloads screen orders its queue.
+    public var downloadSortKey: DownloadSortKey
+    public var downloadSortAscending: Bool
+    /// How the Downloads screen groups its queue.
+    public var downloadGrouping: DownloadGrouping
 
     public init(
         gatewayURL: String? = nil,
@@ -46,7 +56,10 @@ public struct LibrarySettings: Codable, Hashable, Sendable {
         hiddenRails: Set<String> = [],
         categoryOrder: [String] = [],
         playbackSpeed: Double = 1.0,
-        autoPlayNext: Bool = true
+        autoPlayNext: Bool = true,
+        downloadSortKey: DownloadSortKey = .dateAdded,
+        downloadSortAscending: Bool = false,
+        downloadGrouping: DownloadGrouping = .none
     ) {
         self.gatewayURL = gatewayURL
         self.preferredLanguage = preferredLanguage
@@ -54,10 +67,14 @@ public struct LibrarySettings: Codable, Hashable, Sendable {
         self.categoryOrder = categoryOrder
         self.playbackSpeed = playbackSpeed
         self.autoPlayNext = autoPlayNext
+        self.downloadSortKey = downloadSortKey
+        self.downloadSortAscending = downloadSortAscending
+        self.downloadGrouping = downloadGrouping
     }
 
     private enum CodingKeys: String, CodingKey {
         case gatewayURL, preferredLanguage, hiddenRails, categoryOrder, playbackSpeed, autoPlayNext
+        case downloadSortKey, downloadSortAscending, downloadGrouping
     }
 
     /// Tolerant decoding: a document written by an older build is missing the
@@ -70,6 +87,12 @@ public struct LibrarySettings: Codable, Hashable, Sendable {
         categoryOrder = try container.decodeIfPresent([String].self, forKey: .categoryOrder) ?? []
         playbackSpeed = try container.decodeIfPresent(Double.self, forKey: .playbackSpeed) ?? 1.0
         autoPlayNext = try container.decodeIfPresent(Bool.self, forKey: .autoPlayNext) ?? true
+        downloadSortKey = try container.decodeIfPresent(DownloadSortKey.self, forKey: .downloadSortKey)
+            ?? .dateAdded
+        downloadSortAscending = try container.decodeIfPresent(Bool.self, forKey: .downloadSortAscending)
+            ?? false
+        downloadGrouping = try container.decodeIfPresent(DownloadGrouping.self, forKey: .downloadGrouping)
+            ?? .none
     }
 
     /// The default gateway probed at launch when the user has not chosen one.

@@ -43,6 +43,25 @@ struct PlaybackRequest: Hashable, Identifiable {
     }
 }
 
+extension PlaybackRequest {
+    /// Rebuilds the minimal request a stored row needs (history, downloads).
+    ///
+    /// The player re-resolves the full title from the provider, so only the
+    /// identifying fields have to survive the round trip through the library.
+    init(subjectID: String, title: String, poster: String?, season: Int?, episode: Int?) {
+        let subject = Subject(
+            id: subjectID,
+            title: title,
+            poster: poster,
+            kind: episode == nil ? "movie" : "series"
+        )
+        let episodeValue = season.flatMap { season in
+            episode.map { Episode(subjectID: subjectID, season: season, number: $0) }
+        }
+        self.init(subject: subject, season: season, episode: episodeValue)
+    }
+}
+
 /// Every push destination in the app.
 enum Route: Hashable {
     case detail(Subject)

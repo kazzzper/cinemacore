@@ -137,6 +137,24 @@ struct EpisodeTests {
         )
     }
 
+    /// The gateway sends a numeric runtime; the display string is the fallback,
+    /// not the other way round.
+    @Test("durationText prefers the provider's numeric duration")
+    func durationText() {
+        #expect(Episode(subjectID: "1", season: 1, number: 1, durationSeconds: 2880).durationText == "48m")
+        #expect(Episode(subjectID: "1", season: 1, number: 1, durationSeconds: 3720).durationText == "1h 2m")
+        #expect(Episode(subjectID: "1", season: 1, number: 1, durationSeconds: 3600).durationText == "1h")
+        #expect(Episode(subjectID: "1", season: 1, number: 1, durationSeconds: 45).durationText == "45s")
+        // A nonsense numeric value falls through to whatever the server labelled.
+        #expect(Episode(subjectID: "1", season: 1, number: 1, duration: "57 min").durationText == "57 min")
+        #expect(Episode(subjectID: "1", season: 1, number: 1).durationText == nil)
+        // The numeric field wins when both are present.
+        #expect(
+            Episode(subjectID: "1", season: 1, number: 1, duration: "wrong", durationSeconds: 600)
+                .durationText == "10m"
+        )
+    }
+
     @Test("identity is stable and unique per season/episode")
     func identity() {
         let a = Episode(subjectID: "9", season: 2, number: 4)
@@ -329,6 +347,24 @@ struct CinemacoreErrorTests {
         #expect(!CinemacoreError.cancelled.isRetryable)
         #expect(!CinemacoreError.http(status: 404, code: nil, message: nil).isRetryable)
         #expect(!CinemacoreError.locked(reason: "Region").isRetryable)
+    }
+
+    /// A download that has moved gigabytes must not be abandoned because the CDN
+    /// hiccuped. Permanent statuses stay permanent; transient ones retry.
+    @Test("HTTP status decides retryability, not the case alone")
+    func httpRetryability() {
+        for status in [408, 429, 500, 502, 503, 504] {
+            #expect(
+                CinemacoreError.http(status: status, code: nil, message: nil).isRetryable,
+                "\(status) should be retryable"
+            )
+        }
+        for status in [400, 401, 403, 404, 410, 451] {
+            #expect(
+                !CinemacoreError.http(status: status, code: nil, message: nil).isRetryable,
+                "\(status) should not be retryable"
+            )
+        }
     }
 
     @Test("only a lockout asks for the gate")

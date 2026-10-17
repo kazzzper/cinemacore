@@ -23,6 +23,13 @@ import (
 // errNoData marks an envelope whose data payload is empty/absent.
 var errNoData = errors.New("moviebox: empty data")
 
+// getListBody mirrors the reference GetListRequest for the main home tab
+// (categoryId 1, page 1, page size 24).
+const getListBody = `{"categoryId":1,"page":1,"pageSize":24}`
+
+// homeTabID is the "Main Home / Feed" tab id (OFFICIAL_API_DOCUMENTATION.md §8).
+const homeTabID = "1"
+
 // Provider talks to the MovieBox BFF through a signed session.
 type Provider struct{ s *session.Client }
 
@@ -32,19 +39,35 @@ func New(s *session.Client) *Provider { return &Provider{s: s} }
 // Name identifies this provider.
 func (p *Provider) Name() string { return "moviebox" }
 
-// Home returns the landing sections from the daily recommendation feed.
+// Home returns the landing rails, one Section per upstream rail.
+//
+// The Kotlin reference app posts home/v2/get-list, but that route answers 404 on
+// every live gateway host (api6/api5/api/api.inmoviebox.com, checked 2026-10-17,
+// no body); the reference's own proxy resolves it to
+// tab-operating?tabId=<categoryId> (LocalMovieBoxServer.kt:1067-1120), which is
+// the live multi-rail layout. We try the documented route first in case a
+// cluster serves it, then its resolution, then the single ranked daily feed as a
+// last resort.
 func (p *Provider) Home(ctx context.Context) (models.Page, error) {
-	var out itemsPage
-	if err := p.call(ctx, http.MethodPost, "/wefeed-mobile-bff/subject-api/daily-movie-rec",
-		`{"page":1,"pageSize":20}`, &out); err != nil {
+	var list homeRails
+	if err := p.call(ctx, http.MethodPost, "/home/v2/get-list", getListBody, &list); err == nil {
+		if sections := list.sections(); len(sections) > 0 {
+			return models.Page{Sections: sections}, nil
+		}
+	}
+	var tabs homeRails
+	if err := p.call(ctx, http.MethodGet, "/wefeed-mobile-bff/tab-operating?"+query("page", "1", "tabId", homeTabID, "version", ""), "", &tabs); err == nil {
+		if sections := tabs.sections(); len(sections) > 0 {
+			return models.Page{Sections: sections}, nil
+		}
+	}
+	// daily-movie-rec is one ranked feed, not labelled rows, so it can only ever
+	// be a single rail; it keeps /v1/home answering when the layout is down.
+	var daily itemsPage
+	if err := p.call(ctx, http.MethodPost, "/wefeed-mobile-bff/subject-api/daily-movie-rec", `{"page":1,"pageSize":20}`, &daily); err != nil {
 		return models.Page{}, err
 	}
-	// daily-movie-rec is a single ranked feed, not labelled rows, so it maps to
-	// one section rather than the multi-row layout tab-operating would give.
-	return models.Page{Sections: []models.Section{{
-		Title: "Top Picks",
-		Items: mapSubjects(out.Items),
-	}}}, nil
+	return models.Page{Sections: []models.Section{{Title: "Top Picks", Items: mapSubjects(daily.Items)}}}, nil
 }
 
 // Search returns subjects matching query.
@@ -67,31 +90,16 @@ func (p *Provider) Detail(ctx context.Context, id string) (models.Subject, error
 	return out.toSubject(), nil
 }
 
-// Episodes expands the season/episode tree for a series.
+// Episodes expands the season/episode tree for a series, enriched with the
+// per-episode durations that only the resource listing carries.
 func (p *Provider) Episodes(ctx context.Context, id string) ([]models.Episode, error) {
-	var out wireSeasonInfo
-	path := "/wefeed-mobile-bff/subject-api/season-info?" + query("subjectId", id)
-	if err := p.call(ctx, http.MethodGet, path, "", &out); err != nil {
-		return nil, err
-	}
-	return out.episodes(id), nil
+	return p.episodesWithDurations(ctx, id)
 }
 
-// Stream resolves a playback source.
+// Stream resolves a playback source, recovering the real manifest from the
+// gateway's anti-piracy decoy where the references do.
 func (p *Provider) Stream(ctx context.Context, id string, season, episode int) (models.Stream, error) {
-	params := []string{"subjectId", id}
-	if season > 0 {
-		params = append(params, "se", strconv.Itoa(season))
-	}
-	if episode > 0 {
-		params = append(params, "ep", strconv.Itoa(episode))
-	}
-	var out wirePlayInfo
-	path := "/wefeed-mobile-bff/subject-api/play-info?" + query(params...)
-	if err := p.call(ctx, http.MethodGet, path, "", &out); err != nil {
-		return models.Stream{}, err
-	}
-	return out.stream(), nil
+	return p.resolveStream(ctx, id, season, episode)
 }
 
 // Subtitles returns external caption tracks for one episode. The gateway keys
@@ -170,18 +178,142 @@ type itemsPage struct {
 	Items []wireSubject `json:"items"`
 }
 
+// homeRails is the layout envelope the home routes return: titled rows whose
+// subjects sit in one of several containers. tab-operating labels the rows
+// "items", the reference proxy's reshaped get-list labels them "list".
+type homeRails struct {
+	Items []json.RawMessage `json:"items"`
+	List  []json.RawMessage `json:"list"`
+}
+
+// sections maps every row that resolves to at least one subject into a titled
+// Section, preserving upstream order and dropping rows with no subject.
+func (h homeRails) sections() []models.Section {
+	var out []models.Section
+	for _, rows := range [][]json.RawMessage{h.Items, h.List} {
+		for _, raw := range rows {
+			var r homeRow
+			if json.Unmarshal(raw, &r) != nil {
+				continue
+			}
+			if items := r.subjects(); len(items) > 0 {
+				out = append(out, models.Section{Title: r.title(), Items: items})
+			}
+		}
+	}
+	return out
+}
+
+type homeRow struct {
+	Title           string            `json:"title"`
+	Name            string            `json:"name"`
+	CustomData      *homeContainer    `json:"customData"`
+	Banner          *homeContainer    `json:"banner"`
+	RankingListData *homeContainer    `json:"rankingListData"`
+	List            []json.RawMessage `json:"list"`
+	Items           []json.RawMessage `json:"items"`
+	Subjects        []json.RawMessage `json:"subjects"`
+	MovieList       []json.RawMessage `json:"movieList"`
+}
+
+// homeContainer is a named sub-list: customData and rankingListData use
+// "items", banner uses "banners".
+type homeContainer struct {
+	Items   []json.RawMessage `json:"items"`
+	Banners []json.RawMessage `json:"banners"`
+}
+
+// subjects collects a row's subjects from every container the gateway uses.
+// postData/playListData/liveList are deliberately ignored: they carry UGC posts
+// and live-room entries keyed by their own id, not catalog subjects.
+func (r homeRow) subjects() []models.Subject {
+	var out []models.Subject
+	appendRaw := func(raws []json.RawMessage, cards bool) {
+		for _, raw := range raws {
+			if s, ok := tabSubject(raw, cards); ok {
+				out = append(out, s.toSubject())
+			}
+		}
+	}
+	if r.CustomData != nil {
+		appendRaw(r.CustomData.Items, true)
+	}
+	if r.Banner != nil {
+		appendRaw(r.Banner.Banners, true)
+	}
+	if r.RankingListData != nil {
+		for _, raw := range r.RankingListData.Items {
+			appendRaw(rankSubjects(raw), false)
+		}
+	}
+	appendRaw(r.List, false)
+	appendRaw(r.Items, false)
+	appendRaw(r.Subjects, false)
+	appendRaw(r.MovieList, false)
+	return out
+}
+
+func (r homeRow) title() string {
+	if t := firstNonEmpty(r.Title, r.Name); t != "" {
+		return t
+	}
+	return "Section"
+}
+
+// rankSubjects unwraps a rankingListData entry, which nests its subjects under
+// "subjects" instead of being one itself.
+func rankSubjects(raw json.RawMessage) []json.RawMessage {
+	var rank struct {
+		Subjects []json.RawMessage `json:"subjects"`
+	}
+	if json.Unmarshal(raw, &rank) == nil && len(rank.Subjects) > 0 {
+		return rank.Subjects
+	}
+	return []json.RawMessage{raw}
+}
+
+// tabSubject resolves one layout entry to a subject: either a wrapper
+// ({"subject":{…}}) or the entry itself.
+//
+// cards marks the mixed containers (customData, banner), where the gateway
+// reuses the card shape for things that are not catalog subjects. Every such
+// card lacks a subjectType and carries a navigation id in subjectId instead:
+// category teasers (/home/category), cast tiles (/movie/staff), UGC posts
+// (/post/detailVideo), web promos. Resolving them would hand clients ids that
+// Detail cannot answer.
+func tabSubject(raw json.RawMessage, cards bool) (wireSubject, bool) {
+	var wrap struct {
+		Subject *wireSubject `json:"subject"`
+	}
+	s := wireSubject{}
+	switch {
+	case json.Unmarshal(raw, &wrap) == nil && wrap.Subject != nil:
+		s = *wrap.Subject
+	case json.Unmarshal(raw, &s) != nil:
+		return wireSubject{}, false
+	}
+	if s.SubjectID == "" || (cards && s.SubjectType == 0) {
+		return wireSubject{}, false
+	}
+	return s, true
+}
+
 type wireSubject struct {
 	SubjectID         string         `json:"subjectId"`
 	SubjectType       int            `json:"subjectType"`
+	Kind              string         `json:"kind"`
 	Title             string         `json:"title"`
+	Name              string         `json:"name"`
 	Description       string         `json:"description"`
 	ReleaseDate       string         `json:"releaseDate"`
 	Duration          string         `json:"duration"`
 	DurationSeconds   int            `json:"durationSeconds"`
+	Seconds           int            `json:"seconds"`
 	Genre             string         `json:"genre"`
 	Cover             wireImage      `json:"cover"`
 	IMDBRating        string         `json:"imdbRatingValue"`
 	SENum             int            `json:"seNum"`
+	SeasonCount       int            `json:"seasonCount"`
 	StaffList         []wireStaff    `json:"staffList"`
 	Dubs              []wireDub      `json:"dubs"`
 	ResourceDetectors []wireDetector `json:"resourceDetectors"`
@@ -224,6 +356,7 @@ type wirePlayInfo struct {
 type wireStream struct {
 	URL         string `json:"url"`
 	Resolutions string `json:"resolutions"`
+	Size        string `json:"size"`
 	SignCookie  string `json:"signCookie"`
 }
 
@@ -256,15 +389,15 @@ func mapSubjects(in []wireSubject) []models.Subject {
 func (w wireSubject) toSubject() models.Subject {
 	s := models.Subject{
 		ID:              w.SubjectID,
-		Title:           w.Title,
-		Poster:          w.Cover.URL,
+		Title:           firstNonEmpty(w.Title, w.Name),
+		Poster:          httpsURL(w.Cover.URL),
 		Year:            year(w.ReleaseDate),
 		Rating:          parseFloat(w.IMDBRating),
-		Kind:            kindOf(w.SubjectType),
+		Kind:            firstNonEmpty(w.Kind, kindOf(w.SubjectType)),
 		Synopsis:        w.Description,
 		Genres:          splitList(w.Genre),
-		DurationMinutes: durationMinutes(w.DurationSeconds, w.Duration),
-		SeasonCount:     w.SENum,
+		DurationMinutes: durationMinutes(w.totalSeconds(), w.Duration),
+		SeasonCount:     w.seasonTotal(),
 	}
 	for _, d := range w.Dubs {
 		if d.LanName != "" {
@@ -301,25 +434,6 @@ func (w wireSeasonInfo) episodes(subjectID string) []models.Episode {
 	return out
 }
 
-func (w wirePlayInfo) stream() models.Stream {
-	out := models.Stream{}
-	for _, s := range w.Streams {
-		if s.URL == "" {
-			continue
-		}
-		out.URL = s.URL
-		if s.SignCookie != "" {
-			out.Headers = map[string]string{"Cookie": s.SignCookie, "User-Agent": "ExoPlayerLib/2.19.1"}
-		}
-		// A single muxed URL serves every advertised resolution.
-		for _, r := range splitList(s.Resolutions) {
-			out.Qualities = append(out.Qualities, models.Quality{Label: r, URL: s.URL})
-		}
-		break
-	}
-	return out
-}
-
 func (c wireCaption) lang() string {
 	if c.LanName != "" {
 		return c.LanName
@@ -334,6 +448,41 @@ func firstResourceID(ds []models.ResourceDetector) string {
 		}
 	}
 	return ""
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, v := range values {
+		if v != "" {
+			return v
+		}
+	}
+	return ""
+}
+
+// httpsURL promotes the protocol-relative asset URLs some endpoints return
+// ("//pbcdn…") so clients do not resolve them against their own origin.
+func httpsURL(u string) string {
+	if strings.HasPrefix(u, "//") {
+		return "https:" + u
+	}
+	return u
+}
+
+// totalSeconds prefers the feed's exact durationSeconds and falls back to the
+// layout rows' "seconds".
+func (w wireSubject) totalSeconds() int {
+	if w.DurationSeconds > 0 {
+		return w.DurationSeconds
+	}
+	return w.Seconds
+}
+
+// seasonTotal prefers the layout's seasonCount and falls back to the feed's seNum.
+func (w wireSubject) seasonTotal() int {
+	if w.SeasonCount > 0 {
+		return w.SeasonCount
+	}
+	return w.SENum
 }
 
 func kindOf(subjectType int) string {

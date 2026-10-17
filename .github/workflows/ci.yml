@@ -26,7 +26,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Validate OpenAPI
-        run: npx --yes @redocly/cli@latest lint contracts/openapi.yaml
+        # Pinned deliberately. `@latest` floated across Redocly majors and its
+        # default ruleset changed under us, turning this job red with no change
+        # to the contract. Bump it on purpose, not by accident.
+        run: npx --yes @redocly/cli@2.64.1 lint contracts/openapi.yaml
 
   # android: requires JDK 17 + Android SDK (see tasks/T-006)
   # ios: requires macOS + Xcode 27 (see tasks/T-007)

@@ -46,6 +46,13 @@
 		<true/>
 	</dict>
 
+	<!-- Audio keeps playing when the app leaves the foreground, which is also
+	     what picture-in-picture requires. -->
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>audio</string>
+	</array>
+
 	<!-- Request signing uses MD5/SHA-256/HMAC, which are not encryption. -->
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>

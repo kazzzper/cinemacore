@@ -10,7 +10,10 @@ import FoundationNetworking
 ///
 /// The suite is `.serialized` because the route table is process-global: two
 /// tests mutating it concurrently would interfere.
-final class StubURLProtocol: URLProtocol, @unchecked Sendable {
+///
+/// No `@unchecked Sendable` here: `URLProtocol` already declares one, and
+/// re-stating it is both redundant and a warning on Linux.
+final class StubURLProtocol: URLProtocol {
     struct Response: Sendable {
         var status: Int
         var body: Data

@@ -205,6 +205,11 @@ public struct Episode: Identifiable, Hashable, Sendable, Codable {
     public let number: Int
     public let title: String
     public let duration: String
+    /// The gateway's authoritative runtime, in seconds.
+    ///
+    /// Preferred over ``duration`` because upstream ships a number while
+    /// `duration` is a display string the server does not populate.
+    public let durationSeconds: Int?
     public let still: String?
 
     public init(
@@ -213,6 +218,7 @@ public struct Episode: Identifiable, Hashable, Sendable, Codable {
         number: Int,
         title: String = "",
         duration: String = "",
+        durationSeconds: Int? = nil,
         still: String? = nil
     ) {
         self.subjectID = subjectID
@@ -220,10 +226,25 @@ public struct Episode: Identifiable, Hashable, Sendable, Codable {
         self.number = number
         self.title = title
         self.duration = duration
+        self.durationSeconds = durationSeconds
         self.still = still
     }
 
     public var id: String { "\(subjectID)-s\(season)e\(number)" }
+
+    /// `"48m"` / `"1h 2m"`, falling back to whatever the server labelled it.
+    public var durationText: String? {
+        if let durationSeconds, durationSeconds > 0 {
+            let minutes = durationSeconds / 60
+            guard minutes > 0 else { return "\(durationSeconds)s" }
+            if minutes >= 60 {
+                let remainder = minutes % 60
+                return remainder == 0 ? "\(minutes / 60)h" : "\(minutes / 60)h \(remainder)m"
+            }
+            return "\(minutes)m"
+        }
+        return duration.isEmpty ? nil : duration
+    }
 
     /// Never renders an empty row.
     public var displayTitle: String {

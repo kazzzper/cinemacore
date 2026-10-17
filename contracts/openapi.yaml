@@ -11,12 +11,21 @@ servers:
     description: local
 tags:
   - name: system
+    description: Service health and build information.
   - name: browse
+    description: "Browsing and discovery: landing rails, search and suggestions."
   - name: title
+    description: Per-title detail, episode trees and playback resolution.
+# Unauthenticated by design: this runs on localhost, and on the user's own
+# gateway in the app. Declared explicitly so the contract says so rather
+# than leaving the auth model undefined.
+security: []
+
 paths:
   /health:
     get:
       tags: [system]
+      summary: Liveness probe
       operationId: health
       responses:
         "200":
@@ -31,6 +40,7 @@ paths:
   /version:
     get:
       tags: [system]
+      summary: Build version
       operationId: version
       responses:
         "200":
@@ -45,6 +55,7 @@ paths:
   /v1/home:
     get:
       tags: [browse]
+      summary: Landing rails
       operationId: home
       responses:
         "200":
@@ -57,6 +68,7 @@ paths:
   /v1/search:
     get:
       tags: [browse]
+      summary: Search titles
       operationId: search
       parameters:
         - name: q
@@ -82,6 +94,7 @@ paths:
   /v1/detail/{id}:
     get:
       tags: [title]
+      summary: One title's details
       operationId: detail
       parameters:
         - name: id
@@ -99,6 +112,7 @@ paths:
   /v1/detail/{id}/seasons:
     get:
       tags: [title]
+      summary: Season and episode tree
       operationId: seasons
       parameters:
         - name: id
@@ -122,10 +136,15 @@ paths:
   /v1/play:
     get:
       tags: [title]
+      summary: Resolve playback sources
       operationId: play
       description: |
         Resolved playback sources for one episode. A movie omits both season and
         episode, and the provider then answers with the movie stream.
+
+        When the upstream offers only its anti-piracy decoy and no recovery path
+        yields a real manifest, this answers 502 with code `stream_unavailable`
+        instead of returning the decoy as playable content.
       parameters:
         - name: subjectId
           in: query
@@ -152,6 +171,7 @@ paths:
   /v1/search/suggestions:
     get:
       tags: [browse]
+      summary: Type-ahead suggestions
       operationId: searchSuggestions
       parameters:
         - name: q
@@ -242,12 +262,21 @@ components:
         season: { type: integer }
         number: { type: integer }
         title: { type: string }
+        durationSeconds:
+          type: integer
+          description: Upstream per-episode length; omitted when the resource listing has none.
     Quality:
       type: object
       required: [label, url]
       properties:
         label: { type: string }
         url: { type: string }
+        size:
+          type: string
+          description: Upstream size in bytes for this rendition.
+        cookie:
+          type: string
+          description: Media-request cookie (the gateway's signCookie); the only credential the CDN accepts.
     Stream:
       type: object
       required: [url]

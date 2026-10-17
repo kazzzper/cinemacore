@@ -8,6 +8,8 @@ struct DetailScreen: View {
 
     @State private var model: DetailViewModel
     @State private var isInWatchlist = false
+    @State private var showsEpisodePicker = false
+    @State private var downloadNotice: String?
     @Environment(\.theme) private var theme
 
     init(subject: Subject, app: AppModel) {
@@ -78,6 +80,63 @@ struct DetailScreen: View {
             isInWatchlist = app.isInWatchlist(subject.id)
             await model.load()
         }
+        .sheet(isPresented: $showsEpisodePicker) { episodePicker }
+        .alert("Download", isPresented: noticeIsPresented) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(downloadNotice ?? "")
+        }
+    }
+
+    // MARK: - Downloads
+
+    /// The downloaded title, resolved once the detail call has the full subject.
+    private var downloadSubject: Subject { model.state.value?.subject ?? subject }
+
+    private func startDownload() {
+        guard subject.isSeries else {
+            Task { await queue([DownloadTarget()]) }
+            return
+        }
+        guard !model.episodes.isEmpty else {
+            downloadNotice = "This series has no episodes to download yet."
+            return
+        }
+        showsEpisodePicker = true
+    }
+
+    /// The season's episodes, with the whole-season action as the leading row —
+    /// `SelectionSheet` already renders exactly that shape for the subtitle
+    /// picker, so the picker is reused rather than rebuilt.
+    private var episodePicker: some View {
+        SelectionSheet(
+            title: "Download \(subject.title)",
+            items: model.episodes,
+            label: { "\($0.number). \($0.displayTitle)" },
+            isSelected: { _ in false },
+            onSelect: { episode in
+                Task { await queue([DownloadTarget(season: episode.season, episode: episode)]) }
+            },
+            detail: { $0.durationText },
+            noneLabel: "Download Season \(model.selectedSeason) · \(model.episodes.count) episodes",
+            onSelectNone: {
+                Task {
+                    await queue(model.episodes.map { DownloadTarget(season: $0.season, episode: $0) })
+                }
+            }
+        )
+    }
+
+    private func queue(_ targets: [DownloadTarget]) async {
+        showsEpisodePicker = false
+        downloadNotice = await app.enqueueDownload(subject: downloadSubject, targets: targets).message
+    }
+
+    private var noticeIsPresented: Binding<Bool> {
+        Binding(
+            get: { downloadNotice != nil },
+            set: { if !$0 { downloadNotice = nil } }
+        )
     }
 
     // MARK: - Sections
@@ -111,6 +170,15 @@ struct DetailScreen: View {
                 .frame(maxWidth: .infinity, minHeight: Layout.minimumTarget)
             }
             .glassButton(prominent: true)
+
+            Button {
+                startDownload()
+            } label: {
+                Label("Download", systemImage: "arrow.down.circle")
+                    .font(Typography.button)
+                    .frame(maxWidth: .infinity, minHeight: Layout.minimumTarget)
+            }
+            .glassButton()
 
             if subject.isSeries, let episode = model.selectedEpisode {
                 Text("S\(episode.season) E\(episode.number)")
@@ -207,8 +275,8 @@ struct DetailScreen: View {
                                 .font(Typography.rowTitle)
                                 .foregroundStyle(theme.textPrimary.color)
                                 .lineLimit(2)
-                            if !episode.duration.isEmpty {
-                                Text(episode.duration)
+                            if let duration = episode.durationText {
+                                Text(duration)
                                     .font(Typography.metadata)
                                     .foregroundStyle(theme.textSecondary.color)
                             }

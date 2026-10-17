@@ -4,9 +4,32 @@ package provider
 
 import (
 	"context"
+	"errors"
 
 	"github.com/solo12345689/cinemacore/core/models"
 )
+
+// UnavailableError reports a source that answered the request but has nothing
+// playable to offer — as opposed to a transport or decode failure. It exists so
+// a surface can answer honestly when the upstream serves an anti-piracy decoy
+// instead of content, rather than passing the decoy off as a stream.
+type UnavailableError struct {
+	Provider string
+	Reason   string
+}
+
+func (e *UnavailableError) Error() string {
+	if e.Provider == "" {
+		return "no playable source: " + e.Reason
+	}
+	return e.Provider + ": no playable source: " + e.Reason
+}
+
+// IsUnavailable reports whether err is or wraps an UnavailableError.
+func IsUnavailable(err error) bool {
+	var target *UnavailableError
+	return errors.As(err, &target)
+}
 
 // Provider is one content source.
 type Provider interface {

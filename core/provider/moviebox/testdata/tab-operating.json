@@ -1,0 +1,756 @@
+{
+  "code": 0,
+  "message": "ok",
+  "data": {
+    "items": [
+      {
+        "type": "BANNER",
+        "position": 1,
+        "title": "IN Banner",
+        "groups": [],
+        "subjects": [],
+        "banner": {
+          "interval": "4",
+          "autoPlay": true,
+          "banners": [
+            {
+              "image": {
+                "url": "https://pbcdn.aoneroom.com/image/2026/10/16/6e82b183b65b4482d9c4b1ef6d3f53d1.webp",
+                "width": 1920,
+                "height": 1080,
+                "size": 314242,
+                "format": "webp",
+                "thumbnail": "e26*UI~qIoE1D%%N%2t7%2V@nlxtWCoz%MbJ%MM|M{xuRiV[xuozM{",
+                "gif": {
+                  "videoUrl": "",
+                  "firstFrameUrl": ""
+                },
+                "averageHueLight": "#36312e",
+                "averageHueDark": "#363231"
+              },
+              "content": "Jailer",
+              "deepLink": "oneroom://com.community.oneroom?type=/home/category&categoryType=197287232703720704&showType=0&styleTemplate=",
+              "opItemId": "0",
+              "subjectId": "197287232703720704",
+              "hasResource": false,
+              "seenStatus": 0,
+              "subject": null
+            },
+            {
+              "image": {
+                "url": "https://pbcdnw.aoneroom.com/image/2026/10/14/41c3aeb73a9a4962af5194e7238e6e6e.webp",
+                "width": 3840,
+                "height": 2160,
+                "size": 1180310,
+                "format": "webp",
+                "thumbnail": "e58M?T0NIp~AD*-oNHn$ofR+M|W;xZRkW=?FE3kB%1M|%1WCays:Rk",
+                "gif": {
+                  "videoUrl": "",
+                  "firstFrameUrl": ""
+                },
+                "averageHueLight": "#42281c",
+                "averageHueDark": "#422a1f"
+              },
+              "content": "VisionQuest",
+              "deepLink": "oneroom://com.community.oneroom?type=/movie/detail&id=3908280950886646112&subject_type=2",
+              "opItemId": "0",
+              "subjectId": "3908280950886646112",
+              "hasResource": true,
+              "seenStatus": 0,
+              "subject": {
+                "subjectId": "3908280950886646112",
+                "title": "VisionQuest [Hindi]",
+                "releaseDate": "2026",
+                "genre": "Action,Adventure,Drama",
+                "cover": {
+                  "url": "https://pbcdn.aoneroom.com/image/2026/10/14/de5c792a67c4571a6ea7993273f52f81.jpg",
+                  "width": 1086,
+                  "height": 1609,
+                  "size": 319479,
+                  "format": "jpg",
+                  "thumbnail": "e6A+]ERR02%19x?FIrRkxDkAMzENX8xZxC~TNHMzxZIqW?oLaKn$xs",
+                  "gif": null,
+                  "averageHueLight": "#573c26",
+                  "averageHueDark": "#573e2a"
+                },
+                "subjectType": 2,
+                "detailUrl": "https://movie-box.co/detail/visionquest-hindi-0qVaGP1YHE4",
+                "playUrl": {
+                  "playUrl": "",
+                  "urlType": "PLAY_URL_WEB"
+                },
+                "restrictKid": 0,
+                "durationSeconds": 0
+              }
+            }
+          ],
+          "style": "TRANSLUCEN"
+        },
+        "icons": [],
+        "rankings": [],
+        "opId": "4586998541041763304",
+        "deepLink": "",
+        "filters": [],
+        "customData": null,
+        "playListData": null,
+        "rankingData": null,
+        "rankingListData": null,
+        "liveList": [],
+        "page": null,
+        "postData": [],
+        "version": "1792140411",
+        "enableDedup": 0,
+        "currentPage": 1,
+        "styleTemplate": "",
+        "defaultIndex": 0,
+        "verticalStyleSubjects": []
+      },
+      {
+        "type": "RANKING_LIST_MULTI_TAB",
+        "position": 4,
+        "title": "Trending Movies",
+        "groups": [],
+        "subjects": [],
+        "banner": null,
+        "icons": [],
+        "rankings": [],
+        "opId": "388125635899703992",
+        "deepLink": "oneroom://com.community.oneroom?type=/rank/all&category=&tabId=0&rankingListId=1243434136640145504",
+        "filters": [],
+        "customData": null,
+        "playListData": null,
+        "rankingData": null,
+        "rankingListData": {
+          "items": [
+            {
+              "title": "TOP Movies",
+              "subjects": [
+                {
+                  "subjectId": "9107376937579734040",
+                  "title": "DC [Hindi]",
+                  "rate": 0,
+                  "imdbRate": "8.1",
+                  "subjectType": 1,
+                  "releaseDate": "2026-08-07",
+                  "genre": "Action, Crime, Drama",
+                  "cover": {
+                    "url": "https://pbcdn.aoneroom.com/image/2026/09/06/f4cee1f797854eb41dab6da4b59dddb8.jpg",
+                    "width": 3072,
+                    "height": 4096,
+                    "size": 3361848,
+                    "format": "jpg",
+                    "thumbnail": "eADTxG8{_NRQxt0OawRPkDRO#hWFjEIUaeI]n%WA%Nj]s,ofV?WWjZ",
+                    "gif": null,
+                    "averageHueLight": "#627b99",
+                    "averageHueDark": "#455466"
+                  },
+                  "seconds": 9000,
+                  "description": "",
+                  "countryName": "India",
+                  "seenStatus": 0,
+                  "viewers": 214,
+                  "hasResource": true,
+                  "dl": null,
+                  "opItemId": "0",
+                  "ops": "",
+                  "tag": "",
+                  "appointmentDate": "",
+                  "imdbRatingValue": "8.1",
+                  "corner": "Hindi",
+                  "appointmentCnt": 0,
+                  "detailUrl": "https://movie-box.co/detail/dc-hindi-uJtyLeKSLQa",
+                  "playUrl": {
+                    "playUrl": "",
+                    "urlType": "PLAY_URL_WEB"
+                  },
+                  "restrictKid": 0,
+                  "shortsEpisode": 0,
+                  "vipInfo": {
+                    "requireMemberType": 1,
+                    "memberIcon": "https://pbcdn.aoneroom.com/image/2026/06/30/b83ec160ad5735c93a55e0a27e863532.png",
+                    "previewSeconds": 360
+                  },
+                  "cornerBadge": null
+                },
+                {
+                  "subjectId": "6040954039821651336",
+                  "title": "Colony [Hindi]",
+                  "rate": 0,
+                  "imdbRate": "6.5",
+                  "subjectType": 1,
+                  "releaseDate": "2026-05-21",
+                  "genre": "Action, Adventure, Crime",
+                  "cover": {
+                    "url": "https://pbcdn.aoneroom.com/image/2026/10/09/a8aeebb522111c0825bf9f172ca0e488.jpg",
+                    "width": 2764,
+                    "height": 4096,
+                    "size": 1373905,
+                    "format": "jpg",
+                    "thumbnail": "exF?-BkCtlWBae_NkCofbHkCr?axV?ozofWVe.j[off6ozogkCV@WB",
+                    "gif": null,
+                    "averageHueLight": "#6e8899",
+                    "averageHueDark": "#4d5c66"
+                  },
+                  "seconds": 7380,
+                  "description": "",
+                  "countryName": "Korea",
+                  "seenStatus": 0,
+                  "viewers": 1797,
+                  "hasResource": true,
+                  "dl": null,
+                  "opItemId": "0",
+                  "ops": "",
+                  "tag": "",
+                  "appointmentDate": "",
+                  "imdbRatingValue": "6.5",
+                  "corner": "Hindi",
+                  "appointmentCnt": 0,
+                  "detailUrl": "https://movie-box.co/detail/colony-hindi-WrHlMwhDfc7",
+                  "playUrl": {
+                    "playUrl": "",
+                    "urlType": "PLAY_URL_WEB"
+                  },
+                  "restrictKid": 0,
+                  "shortsEpisode": 0,
+                  "cornerBadge": null
+                }
+              ],
+              "categoryId": "9167640870324258216"
+            }
+          ],
+          "rankingListId": "1243434136640145504"
+        },
+        "liveList": [],
+        "page": null,
+        "postData": [],
+        "version": "1786504851",
+        "enableDedup": 0,
+        "currentPage": 1,
+        "styleTemplate": "",
+        "defaultIndex": 0,
+        "verticalStyleSubjects": []
+      },
+      {
+        "type": "SUBJECTS_MOVIE",
+        "position": 6,
+        "title": "Gems for you",
+        "groups": [],
+        "subjects": [
+          {
+            "subjectId": "1253537148481993368",
+            "title": "Sleepy Princess in the Demon Castle [English]",
+            "rate": 0,
+            "imdbRate": "7.5",
+            "subjectType": 2,
+            "releaseDate": "2020-10-06",
+            "genre": "Anime, Comedy, Fantasy",
+            "cover": {
+              "url": "https://pbcdn.aoneroom.com/image/2026/01/26/c8c19208144ba37c6fc7844e35cf963b.jpg",
+              "width": 450,
+              "height": 636,
+              "size": 100705,
+              "format": "jpg",
+              "thumbnail": "eIJjrQ=|4;oMXB~C?G%1IpWEO8X9IBenjZ%gNGVtwgWBRPM{NMR:R+",
+              "gif": null,
+              "averageHueLight": "#99787a",
+              "averageHueDark": "#665455"
+            },
+            "seconds": 0,
+            "description": "",
+            "countryName": "Japan",
+            "seenStatus": 0,
+            "viewers": 1968,
+            "hasResource": true,
+            "dl": null,
+            "opItemId": "0",
+            "ops": "{\"rid\":\"ead96bde-f153-478a-9b94-2c508ea25256\",\"trace_id\":\"0a21c89217922737352660bd0da55076\",\"ab\":[\"abt_accel_3:60191:1892228:1505029\"]}",
+            "tag": "",
+            "appointmentDate": "",
+            "imdbRatingValue": "7.5",
+            "corner": "English",
+            "appointmentCnt": 0,
+            "detailUrl": "https://movie-box.co/detail/sleepy-princess-in-the-demon-castle-english-8YI5wsedBu1",
+            "playUrl": {
+              "playUrl": "",
+              "urlType": "PLAY_URL_WEB"
+            },
+            "restrictKid": 0,
+            "shortsEpisode": 0,
+            "cornerBadge": null
+          },
+          {
+            "subjectId": "1878502221663427872",
+            "title": "VisionQuest [Tamil]",
+            "rate": 0,
+            "imdbRate": "8.3",
+            "subjectType": 2,
+            "releaseDate": "2026-10-14",
+            "genre": "Action, Adventure, Drama",
+            "cover": {
+              "url": "https://pbcdn.aoneroom.com/image/2026/10/14/de5c792a67c4571a6ea7993273f52f81.jpg",
+              "width": 1086,
+              "height": 1609,
+              "size": 319479,
+              "format": "jpg",
+              "thumbnail": "e6A+]ERR02%19x?FIrRkxDkAMzENX8xZxC~TNHMzxZIqW?oLaKn$xs",
+              "gif": null,
+              "averageHueLight": "#573c26",
+              "averageHueDark": "#573e2a"
+            },
+            "seconds": 0,
+            "description": "",
+            "countryName": "United States",
+            "seenStatus": 0,
+            "viewers": 4665,
+            "hasResource": true,
+            "dl": null,
+            "opItemId": "0",
+            "ops": "{\"rid\":\"ead96bde-f153-478a-9b94-2c508ea25256\",\"trace_id\":\"0a21c89217922737352660bd0da55076\",\"ab\":[\"abt_accel_3:60191:1892228:1505029\"]}",
+            "tag": "",
+            "appointmentDate": "",
+            "imdbRatingValue": "8.3",
+            "corner": "Tamil",
+            "appointmentCnt": 0,
+            "detailUrl": "https://movie-box.co/detail/visionquest-tamil-gmp3D2JyLe2",
+            "playUrl": {
+              "playUrl": "",
+              "urlType": "PLAY_URL_WEB"
+            },
+            "restrictKid": 0,
+            "shortsEpisode": 0,
+            "vipInfo": {
+              "requireMemberType": 1,
+              "memberIcon": "https://pbcdn.aoneroom.com/image/2026/06/30/b83ec160ad5735c93a55e0a27e863532.png",
+              "previewSeconds": 300,
+              "freeEpisodeCount": 2
+            },
+            "cornerBadge": null
+          },
+          {
+            "subjectId": "7092118814179346392",
+            "title": "Spider-Man: Brand New Day[Hindi]",
+            "rate": 0,
+            "imdbRate": "8.0",
+            "subjectType": 1,
+            "releaseDate": "2026-07-31",
+            "genre": "Action, Adventure, Fantasy",
+            "cover": {
+              "url": "https://pbcdn.aoneroom.com/image/2026/09/24/278e4aa87f9518c4b3fc179c666d141c.jpg",
+              "width": 600,
+              "height": 889,
+              "size": 446430,
+              "format": "jpg",
+              "thumbnail": "e9Be,eDNC7%09ZE,-OXnIoNI56tlniI:xu}Z9bSe%1xZD+$gWrS0oy",
+              "gif": null,
+              "averageHueLight": "#572c2d",
+              "averageHueDark": "#573031"
+            },
+            "seconds": 8700,
+            "description": "",
+            "countryName": "United States",
+            "seenStatus": 0,
+            "viewers": 2097,
+            "hasResource": true,
+            "dl": null,
+            "opItemId": "0",
+            "ops": "{\"rid\":\"ead96bde-f153-478a-9b94-2c508ea25256\",\"trace_id\":\"0a21c89217922737352660bd0da55076\",\"ab\":[\"abt_accel_3:60191:1892228:1505029\"]}",
+            "tag": "",
+            "appointmentDate": "",
+            "imdbRatingValue": "8.0",
+            "corner": "Hindi",
+            "appointmentCnt": 0,
+            "detailUrl": "",
+            "playUrl": {
+              "playUrl": "",
+              "urlType": "PLAY_URL_WEB"
+            },
+            "restrictKid": 0,
+            "shortsEpisode": 0,
+            "vipInfo": {
+              "requireMemberType": 1,
+              "memberIcon": "https://pbcdn.aoneroom.com/image/2026/06/30/b83ec160ad5735c93a55e0a27e863532.png",
+              "previewSeconds": 360
+            },
+            "cornerBadge": null
+          }
+        ],
+        "banner": null,
+        "icons": [],
+        "rankings": [],
+        "opId": "1457297283984378256",
+        "deepLink": "",
+        "filters": [],
+        "customData": null,
+        "playListData": null,
+        "rankingData": null,
+        "rankingListData": null,
+        "liveList": [],
+        "page": null,
+        "postData": [],
+        "version": "1785898160",
+        "enableDedup": 0,
+        "currentPage": 1,
+        "styleTemplate": "",
+        "defaultIndex": 0,
+        "verticalStyleSubjects": []
+      },
+      {
+        "type": "FILTER",
+        "position": 7,
+        "title": "Categories",
+        "groups": [],
+        "subjects": [],
+        "banner": null,
+        "icons": [],
+        "rankings": [],
+        "opId": "781541814124922880",
+        "deepLink": "",
+        "filters": [
+          {
+            "title": "",
+            "deepLink": "oneroom://com.community.oneroom?type=/home/movieFilter&tabId=2",
+            "image": null,
+            "isAll": true
+          },
+          {
+            "title": "All Movies",
+            "deepLink": "oneroom://com.community.oneroom?type=/home/movieFilter&tabId=2&filterType={\"classify\":\"Hindi dub\",\"country\":\"All\",\"genre\":\"All\",\"sort\":\"ForYou\",\"year\":\"All\"}",
+            "image": {
+              "url": "https://pbcdn.aoneroom.com/image/2025/04/03/cfd97e54be7634cda78e9b2ae45c3752.jpg",
+              "width": 512,
+              "height": 276,
+              "size": 34706,
+              "format": "jpg",
+              "thumbnail": "eA8|P70i-nnmR*Iv$~RmbHjZWCs:WCoeayxaWEj?jbfjWFoca#ayj[",
+              "gif": {
+                "videoUrl": "",
+                "firstFrameUrl": ""
+              },
+              "averageHueLight": "#473449",
+              "averageHueDark": "#483649"
+            },
+            "isAll": false
+          },
+          {
+            "title": "All Dramas",
+            "deepLink": "oneroom://com.community.oneroom?type=/home/movieFilter&tabId=5&filterType={\"classify\":\"Hindi dub\",\"country\":\"All\",\"genre\":\"All\",\"sort\":\"ForYou\",\"year\":\"All\"}",
+            "image": {
+              "url": "https://pbcdn.aoneroom.com/image/2025/04/03/a6a096ecfaa6e46469e2a3f0908e1b15.jpg",
+              "width": 512,
+              "height": 276,
+              "size": 27763,
+              "format": "jpg",
+              "thumbnail": "e9A8[M0$xsnQxY-AI=oxWEs-jHs.Nbs.ay$%R+bajZa|oLWCoLazj?",
+              "gif": {
+                "videoUrl": "",
+                "firstFrameUrl": ""
+              },
+              "averageHueLight": "#532616",
+              "averageHueDark": "#53281a"
+            },
+            "isAll": false
+          },
+          {
+            "title": "Punjabi",
+            "deepLink": "oneroom://com.community.oneroom?type=/home/movieFilter&tabId=2&filterType={\"classify\":\"Punjabi dub\",\"country\":\"All\",\"genre\":\"All\",\"sort\":\"ForYou\",\"year\":\"All\"}",
+            "image": {
+              "url": "https://pbcdn.aoneroom.com/image/2026/08/19/adeac309bc5d3e4adb3e76fa24fff569.png",
+              "width": 512,
+              "height": 276,
+              "size": 75354,
+              "format": "png",
+              "thumbnail": "e1C5bW9tJB}?0L^krq?FIp9uo{$iE3N[=_nj}?EMxZs:bbn%WVs.Na",
+              "gif": {
+                "videoUrl": "",
+                "firstFrameUrl": ""
+              },
+              "averageHueLight": "#674029",
+              "averageHueDark": "#66422d"
+            },
+            "isAll": false
+          },
+          {
+            "title": "Bengali",
+            "deepLink": "oneroom://com.community.oneroom?type=/home/movieFilter&tabId=2&filterType={\"classify\":\"Bengali dub\",\"country\":\"All\",\"genre\":\"All\",\"sort\":\"ForYou\",\"year\":\"All\"}",
+            "image": {
+              "url": "https://pbcdn.aoneroom.com/image/2026/08/19/8679846a4f609d787d34663df36404b2.png",
+              "width": 512,
+              "height": 276,
+              "size": 76202,
+              "format": "png",
+              "thumbnail": "e2B.+6-lIp?FoJIo?FM}n%NHbboexZNGs:}?%19bxZ%1E2oe%1RkWC",
+              "gif": {
+                "videoUrl": "",
+                "firstFrameUrl": ""
+              },
+              "averageHueLight": "#664b2b",
+              "averageHueDark": "#664d30"
+            },
+            "isAll": false
+          }
+        ],
+        "customData": null,
+        "playListData": null,
+        "rankingData": null,
+        "rankingListData": null,
+        "liveList": [],
+        "page": null,
+        "postData": [],
+        "version": "1792134248",
+        "enableDedup": 0,
+        "currentPage": 1,
+        "styleTemplate": "",
+        "defaultIndex": 0,
+        "verticalStyleSubjects": []
+      },
+      {
+        "type": "POST_LIST",
+        "position": 10,
+        "title": "Movies in Minutes",
+        "groups": [],
+        "subjects": [],
+        "banner": null,
+        "icons": [],
+        "rankings": [],
+        "opId": "9205866401381208160",
+        "deepLink": "",
+        "filters": [],
+        "customData": null,
+        "playListData": null,
+        "rankingData": null,
+        "rankingListData": null,
+        "liveList": [],
+        "page": null,
+        "postData": [
+          {
+            "id": "1818949077015354616",
+            "image": {
+              "url": "https://pbcdnw.aoneroom.com/media/vone/2026/07/18/87643b643b8d3aae9ab8900c1c31da88.jpg",
+              "width": 720,
+              "height": 960,
+              "size": 25889,
+              "format": "jpg",
+              "thumbnail": "eTFheVt6xtxut7~Bxtt7oykCxtoyR*R*WVX8oeR*oyayI;j?R*oejt",
+              "gif": {
+                "videoUrl": "",
+                "firstFrameUrl": ""
+              },
+              "averageHueLight": "#7f6652",
+              "averageHueDark": "#665446"
+            },
+            "content": "#Whatmovieisthis",
+            "deepLink": "oneroom://com.community.oneroom?type=/post/detailVideo&id=1818949077015354616&page_from=Trending",
+            "opItemId": "0",
+            "postType": 4,
+            "ops": "{\"trace_id\":\"0a21c89217922737352660bd0da55076\"}",
+            "creator": {
+              "uid": "5652797833955758376",
+              "nickname": "x-filessssss",
+              "avatar": "https://pacdn.aoneroom.com/app/2025/05/13/2fff5927e4229cbb8be9ade6cde1367e.jpg"
+            }
+          }
+        ],
+        "version": "1785488045",
+        "enableDedup": 1,
+        "currentPage": 1,
+        "styleTemplate": "",
+        "defaultIndex": 0,
+        "verticalStyleSubjects": []
+      },
+      {
+        "type": "SUBJECTS_MOVIE",
+        "position": 17,
+        "title": "🔥Trending Now",
+        "groups": [],
+        "subjects": [
+          {
+            "subjectId": "9107376937579734040",
+            "title": "DC [Hindi]",
+            "rate": 0,
+            "imdbRate": "8.1",
+            "subjectType": 1,
+            "releaseDate": "2026-08-07",
+            "genre": "Action, Crime, Drama",
+            "cover": {
+              "url": "https://pbcdn.aoneroom.com/image/2026/09/06/f4cee1f797854eb41dab6da4b59dddb8.jpg",
+              "width": 3072,
+              "height": 4096,
+              "size": 3361848,
+              "format": "jpg",
+              "thumbnail": "eADTxG8{_NRQxt0OawRPkDRO#hWFjEIUaeI]n%WA%Nj]s,ofV?WWjZ",
+              "gif": null,
+              "averageHueLight": "#627b99",
+              "averageHueDark": "#455466"
+            },
+            "seconds": 9000,
+            "description": "",
+            "countryName": "India",
+            "seenStatus": 0,
+            "viewers": 214,
+            "hasResource": true,
+            "dl": null,
+            "opItemId": "0",
+            "ops": "{\"rid\":\"ead96bde-f153-478a-9b94-2c508ea25256\",\"trace_id\":\"0a21c89217922737352660bd0da55076\",\"ab\":[\"abt_accel_3:60191:1892228:1505029\"]}",
+            "tag": "",
+            "appointmentDate": "",
+            "imdbRatingValue": "8.1",
+            "corner": "Hindi",
+            "appointmentCnt": 0,
+            "detailUrl": "https://movie-box.co/detail/dc-hindi-uJtyLeKSLQa",
+            "playUrl": {
+              "playUrl": "",
+              "urlType": "PLAY_URL_WEB"
+            },
+            "restrictKid": 0,
+            "shortsEpisode": 0,
+            "vipInfo": {
+              "requireMemberType": 1,
+              "memberIcon": "https://pbcdn.aoneroom.com/image/2026/06/30/b83ec160ad5735c93a55e0a27e863532.png",
+              "previewSeconds": 360
+            },
+            "cornerBadge": null
+          },
+          {
+            "subjectId": "6040954039821651336",
+            "title": "Colony [Hindi]",
+            "rate": 0,
+            "imdbRate": "6.5",
+            "subjectType": 1,
+            "releaseDate": "2026-05-21",
+            "genre": "Action, Adventure, Crime",
+            "cover": {
+              "url": "https://pbcdn.aoneroom.com/image/2026/10/09/a8aeebb522111c0825bf9f172ca0e488.jpg",
+              "width": 2764,
+              "height": 4096,
+              "size": 1373905,
+              "format": "jpg",
+              "thumbnail": "exF?-BkCtlWBae_NkCofbHkCr?axV?ozofWVe.j[off6ozogkCV@WB",
+              "gif": null,
+              "averageHueLight": "#6e8899",
+              "averageHueDark": "#4d5c66"
+            },
+            "seconds": 7380,
+            "description": "",
+            "countryName": "Korea",
+            "seenStatus": 0,
+            "viewers": 1797,
+            "hasResource": true,
+            "dl": null,
+            "opItemId": "0",
+            "ops": "{\"rid\":\"ead96bde-f153-478a-9b94-2c508ea25256\",\"trace_id\":\"0a21c89217922737352660bd0da55076\",\"ab\":[\"abt_accel_3:60191:1892228:1505029\"]}",
+            "tag": "",
+            "appointmentDate": "",
+            "imdbRatingValue": "6.5",
+            "corner": "Hindi",
+            "appointmentCnt": 0,
+            "detailUrl": "https://movie-box.co/detail/colony-hindi-WrHlMwhDfc7",
+            "playUrl": {
+              "playUrl": "",
+              "urlType": "PLAY_URL_WEB"
+            },
+            "restrictKid": 0,
+            "shortsEpisode": 0,
+            "cornerBadge": null
+          }
+        ],
+        "banner": null,
+        "icons": [],
+        "rankings": [],
+        "opId": "6376626216702992112",
+        "deepLink": "oneroom://com.community.oneroom?type=/home/category&categoryType=4516404531735022304&showType=1&styleTemplate=",
+        "filters": [],
+        "customData": null,
+        "playListData": null,
+        "rankingData": null,
+        "rankingListData": null,
+        "liveList": [],
+        "page": null,
+        "postData": [],
+        "version": "1785898939",
+        "enableDedup": 0,
+        "currentPage": 1,
+        "styleTemplate": "",
+        "defaultIndex": 0,
+        "verticalStyleSubjects": []
+      },
+      {
+        "type": "CUSTOM",
+        "position": 20,
+        "title": "🔥2025 Must-Watch👁️",
+        "groups": [],
+        "subjects": [],
+        "banner": null,
+        "icons": [],
+        "rankings": [],
+        "opId": "8660899025056598528",
+        "deepLink": "",
+        "filters": [],
+        "customData": {
+          "rowCount": 2,
+          "items": [
+            {
+              "image": {
+                "url": "https://pbcdn.aoneroom.com/image/2025/12/31/8ee5cdc951620e96371c7f927681c842.png",
+                "width": 750,
+                "height": 563,
+                "size": 627408,
+                "format": "png",
+                "thumbnail": "e597R+o~EM-TIv~Bbvo~xCWYozaeM|aw%0OYnNjGaxt64:Vst6azog",
+                "gif": {
+                  "videoUrl": "",
+                  "firstFrameUrl": ""
+                },
+                "averageHueLight": "#453f39",
+                "averageHueDark": "#45413b"
+              },
+              "content": "",
+              "deepLink": "oneroom://com.community.oneroom?type=/home/category&categoryType=3437986246411306488&showType=0&styleTemplate=",
+              "opItemId": "0",
+              "subjectId": "3437986246411306488",
+              "hasResource": false,
+              "seenStatus": 0,
+              "subject": null
+            },
+            {
+              "image": {
+                "url": "https://pbcdn.aoneroom.com/image/2025/12/31/94a1dc15d084b4380c777a2351bba0dd.png",
+                "width": 750,
+                "height": 563,
+                "size": 618773,
+                "format": "png",
+                "thumbnail": "e58XRj%0RO.8kV?wac%1-;WAk8M{Mxt7Mx9YRkM{WBofIUaxRjWXWB",
+                "gif": {
+                  "videoUrl": "",
+                  "firstFrameUrl": ""
+                },
+                "averageHueLight": "#3d4345",
+                "averageHueDark": "#404345"
+              },
+              "content": "",
+              "deepLink": "oneroom://com.community.oneroom?type=/home/category&categoryType=841062926906721800&showType=0&styleTemplate=",
+              "opItemId": "0",
+              "subjectId": "841062926906721800",
+              "hasResource": false,
+              "seenStatus": 0,
+              "subject": null
+            }
+          ],
+          "hiddenTitle": false,
+          "showLine": 0
+        },
+        "playListData": null,
+        "rankingData": null,
+        "rankingListData": null,
+        "liveList": [],
+        "page": null,
+        "postData": [],
+        "version": "1785898677",
+        "enableDedup": 0,
+        "currentPage": 1,
+        "styleTemplate": "",
+        "defaultIndex": 0,
+        "verticalStyleSubjects": []
+      }
+    ]
+  }
+}

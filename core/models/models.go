@@ -38,6 +38,10 @@ type Episode struct {
 	Season    int    `json:"season"`
 	Number    int    `json:"number"`
 	Title     string `json:"title,omitempty"`
+	// DurationSeconds is the upstream per-episode length. It is absent on the
+	// season-info payload and only present on the resource listing, so it is
+	// zero for titles whose resources we could not read.
+	DurationSeconds int `json:"durationSeconds,omitempty"`
 }
 
 // Season groups a series' episodes.
@@ -46,10 +50,14 @@ type Season struct {
 	Episodes []Episode `json:"episodes"`
 }
 
-// Quality is one selectable stream rendition.
+// Quality is one selectable stream rendition. Size and Cookie are per-rendition
+// (upstream emits one stream entry, and one cookie, per resolution); Cookie is
+// the media request's only credential and must reach the wire.
 type Quality struct {
-	Label string `json:"label"`
-	URL   string `json:"url"`
+	Label  string `json:"label"`
+	URL    string `json:"url"`
+	Size   string `json:"size,omitempty"`
+	Cookie string `json:"cookie,omitempty"`
 }
 
 // Stream is a resolved playback source.

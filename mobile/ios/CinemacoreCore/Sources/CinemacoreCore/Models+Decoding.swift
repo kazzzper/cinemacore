@@ -69,7 +69,7 @@ extension Episode {
     /// The gateway spells this `subjectId` (`core/models/models.go`), so the
     /// wire key is pinned rather than derived from the property name.
     public enum CodingKeys: String, CodingKey {
-        case subjectId, season, number, title, duration, still
+        case subjectId, season, number, title, duration, durationSeconds, still
     }
 
     public init(from decoder: any Decoder) throws {
@@ -79,6 +79,7 @@ extension Episode {
         number = try container.decode(Int.self, forKey: .number)
         title = try container.decodeIfPresent(String.self, forKey: .title) ?? ""
         duration = try container.decodeIfPresent(String.self, forKey: .duration) ?? ""
+        durationSeconds = try container.decodeIfPresent(Int.self, forKey: .durationSeconds)
         still = try container.decodeIfPresent(String.self, forKey: .still)
     }
 
@@ -89,6 +90,7 @@ extension Episode {
         try container.encode(number, forKey: .number)
         try container.encode(title, forKey: .title)
         try container.encode(duration, forKey: .duration)
+        try container.encodeIfPresent(durationSeconds, forKey: .durationSeconds)
         try container.encodeIfPresent(still, forKey: .still)
     }
 }

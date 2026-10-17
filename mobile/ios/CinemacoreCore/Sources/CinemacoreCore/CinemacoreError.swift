@@ -38,11 +38,18 @@ public enum CinemacoreError: Error, Equatable, Sendable {
     }
 
     /// Whether retrying the same request could plausibly succeed.
+    ///
+    /// HTTP status matters: a 404 will never become a 200, but a 502/503/504,
+    /// a 408 or a 429 is the CDN having a bad moment. Treating every status as
+    /// permanent would fail a download on its first attempt after hours of
+    /// transfer, which is exactly the case a download manager exists to survive.
     public var isRetryable: Bool {
         switch self {
         case .offline, .timedOut, .upstream:
             true
-        case .cancelled, .badURL, .http, .decoding, .locked:
+        case .http(let status, _, _):
+            status == 408 || status == 429 || (500..<600).contains(status)
+        case .cancelled, .badURL, .decoding, .locked:
             false
         }
     }

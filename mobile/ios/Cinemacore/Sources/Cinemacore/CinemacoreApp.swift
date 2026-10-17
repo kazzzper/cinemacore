@@ -51,10 +51,16 @@ struct CinemacoreApp: App {
 
     /// Library state lives in Application Support so iOS backs it up but does
     /// not expose it to the Files app.
-    private static var libraryDirectory: URL {
+    nonisolated static var libraryDirectory: URL {
         let base = FileManager.default
             .urls(for: .applicationSupportDirectory, in: .userDomainMask)
             .first ?? URL(fileURLWithPath: NSTemporaryDirectory())
         return base.appendingPathComponent("Cinemacore", isDirectory: true)
+    }
+
+    /// Downloads sit beside the library rather than in Caches: a finished
+    /// download is user data, and the OS may purge Caches at any time.
+    nonisolated static var downloadsDirectory: URL {
+        libraryDirectory.appendingPathComponent("Downloads", isDirectory: true)
     }
 }

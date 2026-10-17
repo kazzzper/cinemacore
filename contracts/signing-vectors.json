@@ -1,0 +1,314 @@
+{
+  "$comment": [
+    "Golden vectors for the MovieBox gateway request-signing contract.",
+    "This file is the SINGLE source of truth: the Go suite (core/sign/sign_test.go)",
+    "and the Swift suite (CinemacoreCore/Tests/.../SigningTests.swift) both load it,",
+    "so the two implementations cannot drift apart silently.",
+    "One byte of drift here breaks every signed request. Treat a change to this file",
+    "as a change to a frozen contract: it needs a source and a timestamp."
+  ],
+  "source": "moviebox-internal-api/moviebox_api/utils.py, cross-checked against moviebox-tui (Rust) and core/sign/sign.go",
+  "generatedAt": "2026-10-17T20:00:00Z",
+  "gatewaySecretBase64": "76iRl07s0xSN9jqmEWAt79EBJZulIQIsV64FZr2O",
+  "bodySignatureMaxBytes": 102400,
+  "defaultAccept": "application/json",
+  "defaultContentType": "application/json;charset=UTF-8",
+  "clientTokens": [
+    {
+      "tsMillis": 1700000000000,
+      "token": "1700000000000,e41bb805cc23fdc5541917da93d608d5"
+    },
+    {
+      "tsMillis": 1700000000001,
+      "token": "1700000000001,c0fe8d2526a93752a60ff65c0ee652c0"
+    },
+    {
+      "tsMillis": 1700000000002,
+      "token": "1700000000002,b407eba694405ab44e9c4924d3d1f195"
+    },
+    {
+      "tsMillis": 1700000000003,
+      "token": "1700000000003,3e32c644c2e235dc552d60de19860e18"
+    },
+    {
+      "tsMillis": 1700000000004,
+      "token": "1700000000004,1f6b59d42e3ca0d1ab25b7e151faa3db"
+    }
+  ],
+  "trSignatures": [
+    {
+      "name": "get with query",
+      "method": "GET",
+      "url": "https://apig.inmoviebox.com/wefeed-mobile-bff/subject-api/detail?subjectId=123&page=1&tab=0",
+      "tsMillis": 1700000000000,
+      "expected": "1700000000000|2|5i4LuyUxUltzHNIEBhHQVA=="
+    },
+    {
+      "name": "post json body",
+      "method": "POST",
+      "url": "https://apig.inmoviebox.com/wefeed-mobile-bff/user-api/visitor-login",
+      "body": "{\"clientInfo\":{\"package_name\":\"com.community.oneroom\"}}",
+      "tsMillis": 1700000000001,
+      "expected": "1700000000001|2|M9uRwz5I5tm5vSBI8KEIzg=="
+    },
+    {
+      "name": "get no query",
+      "method": "GET",
+      "url": "https://apig.inmoviebox.com/wefeed-mobile-bff/search",
+      "tsMillis": 1700000000002,
+      "expected": "1700000000002|2|V6DlEMNh1yxoNFQh540fzQ=="
+    },
+    {
+      "name": "body truncated at 102400",
+      "$comment": "bodyRepeat builds a 102400-byte prefix; bodyAppend must be EXCLUDED from the hash but counted in the signed length.",
+      "method": "POST",
+      "url": "https://apig.inmoviebox.com/x",
+      "bodyRepeatChar": "a",
+      "bodyRepeatCount": 102400,
+      "bodyAppend": "TRAILING_MUST_BE_IGNORED",
+      "tsMillis": 1700000000003,
+      "expected": "1700000000003|2|pyBOv/j+5I0FP6C30+yt5Q=="
+    },
+    {
+      "name": "duplicate and blank query keys",
+      "$comment": "Pairs are decoded, stably sorted by key only, and joined without re-encoding.",
+      "method": "GET",
+      "url": "https://apig.inmoviebox.com/p?b=2&a=1&a=3&c=",
+      "tsMillis": 1700000000004,
+      "expected": "1700000000004|2|vD/OjEvR95UT2iXamt5jbA=="
+    }
+  ],
+  "gslbSign": {
+    "packageName": "com.community.oneroom",
+    "deviceID": "868203051234567",
+    "expected": "9071b411e7812cd20d564c3b523dda1c1b0abed0e9824273ff59cf3d903bb17d"
+  },
+  "passwordMD5": {
+    "input": "secret123",
+    "expected": "5d7845ac6ee7cfffafc5fe5f35cf666d"
+  },
+  "resourceVectors": {
+    "$comment": [
+      "Canonical-string resource() cases, generated FROM the Go reference",
+      "(core/sign/sign.go) so both languages are pinned to one behaviour.",
+      "Excluded: a query value that percent-decodes to invalid UTF-8 (e.g. %FF).",
+      "Go strings are byte slices and keep such bytes; a Swift String cannot",
+      "represent them, so that class is documented rather than asserted.",
+      "Everything the app itself generates is valid UTF-8."
+    ],
+    "cases": [
+      {
+        "input": "https://apig.inmoviebox.com/wefeed-mobile-bff/subject-api/detail?subjectId=123&page=1&tab=0",
+        "expected": "/wefeed-mobile-bff/subject-api/detail?page=1&subjectId=123&tab=0"
+      },
+      {
+        "input": "https://apig.inmoviebox.com/wefeed-mobile-bff/search",
+        "expected": "/wefeed-mobile-bff/search"
+      },
+      {
+        "input": "https://apig.inmoviebox.com",
+        "expected": "/"
+      },
+      {
+        "input": "https://apig.inmoviebox.com?x=1",
+        "expected": "/?x=1"
+      },
+      {
+        "input": "https://h/p",
+        "expected": "/p"
+      },
+      {
+        "input": "https://h/p?",
+        "expected": "/p"
+      },
+      {
+        "input": "https://h/p?a=1",
+        "expected": "/p?a=1"
+      },
+      {
+        "input": "https://h/p?b=2&a=1&a=3&c=",
+        "expected": "/p?a=1&a=3&b=2&c="
+      },
+      {
+        "input": "https://h/p?a=1&&b=2",
+        "expected": "/p?a=1&b=2"
+      },
+      {
+        "input": "https://h/p?a",
+        "expected": "/p?a="
+      },
+      {
+        "input": "https://h/p?=v",
+        "expected": "/p?=v"
+      },
+      {
+        "input": "https://h/p?k=",
+        "expected": "/p?k="
+      },
+      {
+        "input": "https://h/p?a=b=c",
+        "expected": "/p?a=b=c"
+      },
+      {
+        "input": "https://h/p?a=1&a=1",
+        "expected": "/p?a=1&a=1"
+      },
+      {
+        "input": "https://h/p?q=a+b",
+        "expected": "/p?q=a b"
+      },
+      {
+        "input": "https://h/p?q=a%20b",
+        "expected": "/p?q=a b"
+      },
+      {
+        "input": "https://h/p?a%20b=c",
+        "expected": "/p?a b=c"
+      },
+      {
+        "input": "https://h/p?a+b=c",
+        "expected": "/p?a b=c"
+      },
+      {
+        "input": "https://h/p?a=%2F",
+        "expected": "/p?a=/"
+      },
+      {
+        "input": "https://h/p?a=%2f",
+        "expected": "/p?a=/"
+      },
+      {
+        "input": "https://h/p?q=%zz",
+        "expected": "/p?q="
+      },
+      {
+        "input": "https://h/p?q=%E4%B8%",
+        "expected": "/p?q="
+      },
+      {
+        "input": "https://h/p%zz",
+        "expected": "https://h/p%zz"
+      },
+      {
+        "input": "https://h/p%20x",
+        "expected": "/p%20x"
+      },
+      {
+        "input": "https://h/p/ä",
+        "expected": "/p/%C3%A4"
+      },
+      {
+        "input": "https://h/p?a=ä",
+        "expected": "/p?a=ä"
+      },
+      {
+        "input": "https://h:8080/p?a=1",
+        "expected": "/p?a=1"
+      },
+      {
+        "input": "https://h/p?a=1#frag",
+        "expected": "/p?a=1"
+      },
+      {
+        "input": "http://h/p#frag?notquery",
+        "expected": "/p"
+      },
+      {
+        "input": "https://h/a/../b",
+        "expected": "/a/../b"
+      },
+      {
+        "input": "not a url at all",
+        "expected": "not%20a%20url%20at%20all"
+      },
+      {
+        "input": "/p?a=1",
+        "expected": "/p?a=1"
+      },
+      {
+        "input": "p?a=1",
+        "expected": "p?a=1"
+      },
+      {
+        "input": "",
+        "expected": "/"
+      },
+      {
+        "input": "https://h/p%E4%B8%",
+        "expected": "https://h/p%E4%B8%"
+      },
+      {
+        "input": "https://h/p%2f",
+        "expected": "/p%2f"
+      },
+      {
+        "input": "https://h/p%2F",
+        "expected": "/p%2F"
+      },
+      {
+        "input": "https://h/p?a=1&b",
+        "expected": "/p?a=1&b="
+      },
+      {
+        "input": "https://h/p?&&",
+        "expected": "/p?"
+      },
+      {
+        "input": "https://h:8080",
+        "expected": "/"
+      },
+      {
+        "input": "//h/p?a=1",
+        "expected": "/p?a=1"
+      },
+      {
+        "input": "https://h/p?q=%25",
+        "expected": "/p?q=%"
+      },
+      {
+        "input": "https://h/p#",
+        "expected": "/p"
+      },
+      {
+        "input": "?a=1",
+        "expected": "/?a=1"
+      },
+      {
+        "input": "https://h/p?A=1&a=2",
+        "expected": "/p?A=1&a=2"
+      },
+      {
+        "input": "https://h/p?b=1&A=2",
+        "expected": "/p?A=2&b=1"
+      },
+      {
+        "input": "https://h/p?q=a%2Bb",
+        "expected": "/p?q=a+b"
+      },
+      {
+        "input": "https://h/p/./q",
+        "expected": "/p/./q"
+      },
+      {
+        "input": "https://h/p?a=1&a=2&a=3",
+        "expected": "/p?a=1&a=2&a=3"
+      },
+      {
+        "input": "HTTPS://H/P?A=1",
+        "expected": "/P?A=1"
+      },
+      {
+        "input": "https://h/p?q=%00",
+        "expected": "/p?q=\u0000"
+      },
+      {
+        "input": "https://h/p?q=%C3%A4",
+        "expected": "/p?q=ä"
+      },
+      {
+        "input": "https://h/p?q=%E4%B8%AD",
+        "expected": "/p?q=中"
+      }
+    ]
+  }
+}

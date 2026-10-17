@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/solo12345689/cinemacore/core/catalog"
+	"github.com/solo12345689/cinemacore/core/provider"
 )
 
 // Server is the HTTP surface for the catalog.
@@ -166,8 +167,15 @@ func intParam(raw string) (int, error) {
 	return n, nil
 }
 
+// fail maps a provider failure to an honest response. An unavailable source is
+// an upstream answer we understood but cannot use — it must never be dressed up
+// as a successful play payload.
 func (s *Server) fail(w http.ResponseWriter, op string, err error) {
 	s.log.Error("request failed", "op", op, "err", err)
+	if provider.IsUnavailable(err) {
+		writeErr(w, http.StatusBadGateway, "stream_unavailable", err.Error())
+		return
+	}
 	writeErr(w, http.StatusBadGateway, "upstream_error", err.Error())
 }
 
