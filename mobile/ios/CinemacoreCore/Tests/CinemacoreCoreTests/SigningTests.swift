@@ -135,7 +135,9 @@ struct SigningContractTests {
         let exactly = String(repeating: "a", count: Signing.bodySignatureMaxBytes)
         let over = exactly + "b"
         // Same truncated hash (the prefix is identical)…
-        let hashOf = { Signing.md5Hex(Array($0.utf8).prefix(Signing.bodySignatureMaxBytes)) }
+        let hashOf: (String) -> String = { body in
+            Signing.md5Hex(Array(Array(body.utf8).prefix(Signing.bodySignatureMaxBytes)))
+        }
         #expect(hashOf(exactly) == hashOf(over))
         // …but a different signature, because the signed length differs.
         #expect(
