@@ -6,6 +6,13 @@
       "model": null,
       "startedAt": "2026-10-17T15:14:52.325Z",
       "lastSeen": "2026-10-17T15:14:52.326Z"
+    },
+    {
+      "id": "dsh-ios",
+      "harness": "dsh",
+      "model": null,
+      "startedAt": "2026-10-17T15:40:14.783Z",
+      "lastSeen": "2026-10-17T15:40:14.784Z"
     }
   ],
   "tasks": [
@@ -94,14 +101,14 @@
     {
       "id": "T-007",
       "title": "iOS app (SwiftUI) via xtool — build on device",
-      "status": "todo",
+      "status": "doing",
       "module": "mobile/ios",
-      "owner": null,
+      "owner": "dsh-ios",
       "deps": [
         "T-004"
       ],
       "acceptance": "xtool dev build produces app; six states; iPad split view",
-      "updatedAt": "2026-10-17T00:00:00.000Z",
+      "updatedAt": "2026-10-17T15:40:15.038Z",
       "links": []
     },
     {
