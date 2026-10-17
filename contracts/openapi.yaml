@@ -96,6 +96,82 @@ paths:
               schema: { $ref: "#/components/schemas/Subject" }
         "502":
           $ref: "#/components/responses/Upstream"
+  /v1/detail/{id}/seasons:
+    get:
+      tags: [title]
+      operationId: seasons
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Season and episode tree for a series
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [seasons]
+                properties:
+                  seasons:
+                    type: array
+                    items: { $ref: "#/components/schemas/Season" }
+        "502":
+          $ref: "#/components/responses/Upstream"
+  /v1/play:
+    get:
+      tags: [title]
+      operationId: play
+      description: |
+        Resolved playback sources for one episode. A movie omits both season and
+        episode, and the provider then answers with the movie stream.
+      parameters:
+        - name: subjectId
+          in: query
+          required: true
+          schema: { type: string }
+        - name: season
+          in: query
+          required: false
+          schema: { type: integer }
+        - name: episode
+          in: query
+          required: false
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Streams and subtitle tracks for the requested subject
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PlayInfo" }
+        "502":
+          $ref: "#/components/responses/Upstream"
+  /v1/search/suggestions:
+    get:
+      tags: [browse]
+      operationId: searchSuggestions
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Type-ahead terms for the query
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { type: string }
+        "400":
+          $ref: "#/components/responses/Error"
+        "502":
+          $ref: "#/components/responses/Upstream"
 components:
   responses:
     Error:
@@ -133,6 +209,14 @@ components:
         dubs:
           type: array
           items: { type: string }
+        durationMinutes: { type: integer }
+        seasonCount: { type: integer }
+        cast:
+          type: array
+          items: { $ref: "#/components/schemas/CastMember" }
+        resourceDetectors:
+          type: array
+          items: { $ref: "#/components/schemas/ResourceDetector" }
     Section:
       type: object
       required: [title, items]
@@ -180,3 +264,54 @@ components:
         lang: { type: string }
         url: { type: string }
         format: { type: string }
+    CastMember:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string }
+        role: { type: string }
+        avatar: { type: string }
+    ResourceDetector:
+      type: object
+      description: One provider playable resource for a title, such as a dub variant.
+      required: [resourceId, name]
+      properties:
+        resourceId: { type: string }
+        name: { type: string }
+    Season:
+      type: object
+      required: [number, episodes]
+      properties:
+        number: { type: integer }
+        episodes:
+          type: array
+          items: { $ref: "#/components/schemas/Episode" }
+    StreamRendition:
+      type: object
+      required: [quality, url]
+      properties:
+        quality:
+          type: string
+          description: Provider label; the first entry is usually `Auto`.
+        url: { type: string }
+        size: { type: string }
+        cookie: { type: string }
+    SubtitleTrack:
+      type: object
+      required: [language, url]
+      properties:
+        language: { type: string }
+        url: { type: string }
+        format:
+          type: string
+          description: Track format, `vtt` or `srt`.
+    PlayInfo:
+      type: object
+      required: [streams, subtitles]
+      properties:
+        streams:
+          type: array
+          items: { $ref: "#/components/schemas/StreamRendition" }
+        subtitles:
+          type: array
+          items: { $ref: "#/components/schemas/SubtitleTrack" }
