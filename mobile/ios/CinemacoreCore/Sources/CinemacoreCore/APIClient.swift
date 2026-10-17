@@ -32,7 +32,9 @@ public struct APIRequest: Sendable, Hashable {
 /// A thin `URLSession` client over the Cinemacore contract.
 ///
 /// No third-party HTTP: `rules/03-swift-ios.md` forbids hand-built request
-/// shapes, and the contract is the single source of truth. Every failure is
+/// shapes. Generating a client from `contracts/openapi.yaml` is still pending,
+/// so the request paths in `RemoteCatalogRepository` are hand-written literals
+/// and the spec and the code must be kept in step by hand. Every failure is
 /// funnelled into ``CinemacoreError`` so screens never see a `URLError`.
 public struct APIClient: Sendable {
     public let baseURL: URL

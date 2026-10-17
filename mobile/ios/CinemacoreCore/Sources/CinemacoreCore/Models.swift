@@ -58,8 +58,17 @@ public struct Subject: Identifiable, Hashable, Sendable, Codable {
     }
 
     /// A series is anything the provider flags as multi-episode.
+    ///
+    /// The gateway is inconsistent about `kind`: the contract documents `1`
+    /// (movie) and `2` (series), while live responses send `"series"`. A
+    /// one-season series is common, so `seasonCount` alone cannot decide it —
+    /// that fallback only applies to an unrecognised kind.
     public var isSeries: Bool {
-        kind == "2" || kind?.lowercased() == "tv" || seasonCount > 1
+        switch kind?.lowercased() {
+        case "2", "tv", "series", "show", "tvshow": true
+        case "1", "movie", "film": false
+        default: seasonCount > 1
+        }
     }
 
     /// `"2021"`, or `nil` when the provider gave us nothing usable.
@@ -262,10 +271,15 @@ public struct StreamRendition: Identifiable, Hashable, Sendable, Codable {
     public var id: String { "\(quality)-\(url)" }
 
     /// Sort key so `1080p` outranks `720p` rather than sorting lexically.
+    ///
+    /// `4K` is matched before the leading-digit parse: it *starts* with a digit,
+    /// so a naive parse would rank it as 4 — below `480p`.
     public var resolutionRank: Int {
-        let digits = quality.prefix { $0.isNumber }
-        if let value = Int(digits) { return value }
-        return quality.lowercased().contains("4k") ? 2160 : 0
+        let lowered = quality.lowercased()
+        if lowered.contains("4k") || lowered.contains("2160") { return 2160 }
+        let digits = lowered.prefix { $0.isNumber }
+        if let value = Int(digits), value > 0 { return value }
+        return 0
     }
 
     public var urlValue: URL? { URL(string: url) }
@@ -372,6 +386,14 @@ public struct ResumePoint: Identifiable, Hashable, Sendable, Codable {
     }
 
     public var id: String {
+        ResumePoint.makeID(subjectID: subjectID, season: season, episode: episode)
+    }
+
+    /// The stable key for a resume point.
+    ///
+    /// Defined once: a second spelling of this key makes a lookup miss silently,
+    /// and resume just stops working with nothing to show for it.
+    public static func makeID(subjectID: String, season: Int?, episode: Int?) -> String {
         guard let season, let episode else { return subjectID }
         return "\(subjectID)-s\(season)e\(episode)"
     }

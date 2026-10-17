@@ -22,10 +22,10 @@ public enum MediaRequest {
 
 /// Converts SubRip (`.srt`) captions to WebVTT.
 ///
-/// `AVPlayer` renders WebVTT and `SubRip` but never `.srt` over HTTP without a
-/// declared MIME type, and the provider serves most tracks as `.srt`. Rather
-/// than depend on the response's `Content-Type`, every non-VTT track is
-/// converted locally and side-loaded from a file URL.
+/// `AVPlayer` renders WebVTT, not SubRip — an `.srt` track handed to it fails,
+/// which is the whole reason this conversion exists. The provider serves most
+/// tracks as `.srt`, and rather than trust the response's `Content-Type`, every
+/// non-VTT track is converted locally and side-loaded from a file URL.
 public enum SubtitleConverter {
 
     /// Rewrites an SRT document as WebVTT.
@@ -129,13 +129,15 @@ public struct PreparedSubtitle: Hashable, Sendable {
 /// Writes converted caption tracks to a cache directory.
 ///
 /// Kept free of AVFoundation so it runs (and is tested) on Linux.
+///
+/// `FileManager` is not `Sendable` on Apple platforms, so this holds only the
+/// directory and takes the shared instance at the point of use — which Apple
+/// documents as safe to call from multiple threads.
 public struct SubtitleCache: Sendable {
     private let directory: URL
-    private let fileManager: FileManager
 
-    public init(directory: URL, fileManager: FileManager = .default) {
+    public init(directory: URL) {
         self.directory = directory
-        self.fileManager = fileManager
     }
 
     /// A stable on-disk name, so repeated playback reuses the converted file
@@ -150,6 +152,7 @@ public struct SubtitleCache: Sendable {
     /// Returns a WebVTT file URL for `track`, converting and caching as needed.
     @discardableResult
     public func prepare(track: SubtitleTrack, contents: String) throws -> URL {
+        let fileManager = FileManager.default
         let destination = fileURL(for: track)
         if fileManager.fileExists(atPath: destination.path) {
             return destination

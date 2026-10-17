@@ -114,7 +114,14 @@ public struct CatalogResolver: Sendable {
     public func resolve() async -> Resolution {
         if let liveURL {
             let client = APIClient(baseURL: liveURL, timeout: 4)
-            if await client.isReachable() {
+            let reachable = await client.isReachable()
+            // `isReachable()` folds a cancelled probe into "unreachable";
+            // committing that would install the demo catalog for a launch the
+            // user already interrupted.
+            if Task.isCancelled {
+                return Resolution(repository: fallback(), note: "Catalog probe cancelled")
+            }
+            if reachable {
                 return Resolution(
                     repository: RemoteCatalogRepository(client: client),
                     note: "Live · \(liveURL.host() ?? liveURL.absoluteString)"

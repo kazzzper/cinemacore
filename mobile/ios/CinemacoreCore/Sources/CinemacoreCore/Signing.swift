@@ -154,37 +154,143 @@ public enum Signing {
 
     /// Returns `"path?sorted_query"`: query pairs are URL-decoded and stably
     /// sorted by key, then joined with `&` and **not** re-encoded.
+    ///
+    /// Parsed by hand rather than with `URLComponents`, because Foundation
+    /// normalises a stray `%` to `%25` and re-encodes paths, while Go leaves
+    /// `RawQuery` untouched and fails the whole parse on a bad path escape. The
+    /// two must agree byte for byte; `resourceVectors` in
+    /// `contracts/signing-vectors.json` pins that agreement, and those vectors
+    /// were generated from the Go reference.
+    ///
+    /// Known limit: a query value that percent-decodes to *invalid* UTF-8 (for
+    /// example `%FF`) is representable in a Go string but not in a Swift
+    /// `String`, so that one class is documented rather than matched. Every URL
+    /// this app builds is valid UTF-8.
     static func resource(_ rawURL: String) -> String {
-        guard let components = URLComponents(string: rawURL) else { return rawURL }
+        let withoutFragment = rawURL.prefix { $0 != "#" }
+        let parts = withoutFragment.split(separator: "?", maxSplits: 1, omittingEmptySubsequences: false)
+        let rawQuery = parts.count > 1 ? String(parts[1]) : ""
 
-        var base = components.percentEncodedPath
-        if base.isEmpty { base = "/" }
+        // A rejected path escape fails the entire parse, and Go returns the
+        // input unchanged in that case.
+        guard let base = canonicalPath(String(parts[0])) else { return rawURL }
 
-        guard let rawQuery = components.percentEncodedQuery, !rawQuery.isEmpty else {
-            return base
-        }
+        // An absent query returns the bare path; a present-but-empty one still
+        // contributes its `?`.
+        guard !rawQuery.isEmpty else { return base }
 
-        var pairs: [(key: String, value: String)] = []
-        for field in rawQuery.split(separator: "&", omittingEmptySubsequences: false) {
+        var pairs: [(key: String, value: String, order: Int)] = []
+        for (order, field) in rawQuery.split(separator: "&", omittingEmptySubsequences: false).enumerated() {
             if field.isEmpty { continue }
-            let parts = field.split(separator: "=", maxSplits: 1, omittingEmptySubsequences: false)
-            let key = queryUnescape(String(parts[0]))
-            let value = parts.count > 1 ? queryUnescape(String(parts[1])) : ""
-            pairs.append((key, value))
+            let cut = field.split(separator: "=", maxSplits: 1, omittingEmptySubsequences: false)
+            let key = queryUnescape(String(cut[0]))
+            let value = cut.count > 1 ? queryUnescape(String(cut[1])) : ""
+            pairs.append((key, value, order))
         }
 
-        // Stable sort by key only; original order breaks ties, matching Go's
-        // `sort.SliceStable`.
-        let sorted = pairs.enumerated()
-            .sorted { lhs, rhs in
-                lhs.element.key == rhs.element.key
-                    ? lhs.offset < rhs.offset
-                    : lhs.element.key < rhs.element.key
-            }
-            .map(\.element)
+        // Sorted by key alone, with the original position breaking ties:
+        // Swift's `sorted` is not guaranteed stable, so stability is explicit.
+        let sorted = pairs.sorted { lhs, rhs in
+            lhs.key == rhs.key ? lhs.order < rhs.order : goStringLess(lhs.key, rhs.key)
+        }
+        return base + "?" + sorted.map { "\($0.key)=\($0.value)" }.joined(separator: "&")
+    }
 
-        let query = sorted.map { "\($0.key)=\($0.value)" }.joined(separator: "&")
-        return base + "?" + query
+    /// The escaped path, or `nil` when Go's `url.Parse` would have rejected the
+    /// URL because of an invalid percent escape.
+    private static func canonicalPath(_ pathAndAuthority: String) -> String? {
+        let rawPath = extractPath(pathAndAuthority)
+        if rawPath.isEmpty { return "/" }
+
+        // A path that is already a valid encoding is returned verbatim, which
+        // preserves the input's own escape casing (Go keeps `RawPath`).
+        if isAlreadyEscaped(rawPath) { return rawPath }
+        // Not already escaped: either it needs encoding, or it is malformed.
+        guard let decoded = rawPath.removingPercentEncoding else { return nil }
+        return goEscapePath(decoded)
+    }
+
+    /// Strips `scheme://authority` or a protocol-relative `//authority`.
+    private static func extractPath(_ value: String) -> String {
+        if let range = value.range(of: "://") {
+            let rest = value[range.upperBound...]
+            guard let slash = rest.firstIndex(of: "/") else { return "" }
+            return String(rest[slash...])
+        }
+        if value.hasPrefix("//") {
+            let rest = value.dropFirst(2)
+            guard let slash = rest.firstIndex(of: "/") else { return "" }
+            return String(rest[slash...])
+        }
+        return value
+    }
+
+    /// True when every byte is either allowed in a Go path or part of a
+    /// well-formed `%XX` escape.
+    private static func isAlreadyEscaped(_ path: String) -> Bool {
+        var iterator = path.utf8.makeIterator()
+        while let byte = iterator.next() {
+            if byte == UInt8(ascii: "%") {
+                guard let high = iterator.next(), let low = iterator.next(),
+                      isHexDigit(high), isHexDigit(low)
+                else { return false }
+                continue
+            }
+            guard isAllowedPathByte(byte) else { return false }
+        }
+        return true
+    }
+
+    /// Go's `shouldEscape(c, encodePath)`: unreserved characters plus the
+    /// reserved set, minus `?`.
+    private static func isAllowedPathByte(_ byte: UInt8) -> Bool {
+        switch byte {
+        case UInt8(ascii: "a")...UInt8(ascii: "z"),
+             UInt8(ascii: "A")...UInt8(ascii: "Z"),
+             UInt8(ascii: "0")...UInt8(ascii: "9"),
+             UInt8(ascii: "-"), UInt8(ascii: "_"), UInt8(ascii: "."), UInt8(ascii: "~"),
+             UInt8(ascii: "$"), UInt8(ascii: "&"), UInt8(ascii: "+"), UInt8(ascii: ","),
+             UInt8(ascii: "/"), UInt8(ascii: ":"), UInt8(ascii: ";"), UInt8(ascii: "="),
+             UInt8(ascii: "@"):
+            true
+        default:
+            false
+        }
+    }
+
+    /// Percent-encodes every byte Go would escape, operating on UTF-8 bytes.
+    private static func goEscapePath(_ path: String) -> String {
+        var out = ""
+        for byte in path.utf8 {
+            if isAllowedPathByte(byte) {
+                out.append(Character(UnicodeScalar(byte)))
+            } else {
+                out += String(format: "%%%02X", byte)
+            }
+        }
+        return out
+    }
+
+    private static func isHexDigit(_ byte: UInt8) -> Bool {
+        switch byte {
+        case UInt8(ascii: "0")...UInt8(ascii: "9"),
+             UInt8(ascii: "a")...UInt8(ascii: "f"),
+             UInt8(ascii: "A")...UInt8(ascii: "F"):
+            true
+        default:
+            false
+        }
+    }
+
+    /// Go compares strings byte-wise; Swift's `<` is Unicode-aware, which can
+    /// order non-ASCII keys differently.
+    private static func goStringLess(_ lhs: String, _ rhs: String) -> Bool {
+        let left = Array(lhs.utf8)
+        let right = Array(rhs.utf8)
+        for index in 0..<min(left.count, right.count) where left[index] != right[index] {
+            return left[index] < right[index]
+        }
+        return left.count < right.count
     }
 
     /// Mirrors Go's `url.QueryUnescape`: `+` means space, and a malformed

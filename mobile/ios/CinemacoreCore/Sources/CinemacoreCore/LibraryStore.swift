@@ -56,6 +56,22 @@ public struct LibrarySettings: Codable, Hashable, Sendable {
         self.autoPlayNext = autoPlayNext
     }
 
+    private enum CodingKeys: String, CodingKey {
+        case gatewayURL, preferredLanguage, hiddenRails, categoryOrder, playbackSpeed, autoPlayNext
+    }
+
+    /// Tolerant decoding: a document written by an older build is missing the
+    /// keys added since, and one missing key must not discard the user's library.
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        gatewayURL = try container.decodeIfPresent(String.self, forKey: .gatewayURL)
+        preferredLanguage = try container.decodeIfPresent(String.self, forKey: .preferredLanguage)
+        hiddenRails = try container.decodeIfPresent(Set<String>.self, forKey: .hiddenRails) ?? []
+        categoryOrder = try container.decodeIfPresent([String].self, forKey: .categoryOrder) ?? []
+        playbackSpeed = try container.decodeIfPresent(Double.self, forKey: .playbackSpeed) ?? 1.0
+        autoPlayNext = try container.decodeIfPresent(Bool.self, forKey: .autoPlayNext) ?? true
+    }
+
     /// The default gateway probed at launch when the user has not chosen one.
     public static let defaultGatewayURL = "http://127.0.0.1:8080"
 }
@@ -66,6 +82,20 @@ private struct LibraryDocument: Codable, Sendable {
     var watchlist: [WatchlistEntry] = []
     var history: [ResumePoint] = []
     var settings = LibrarySettings()
+
+    private enum CodingKeys: String, CodingKey { case watchlist, history, settings }
+
+    /// Declaring `init(from:)` suppresses the synthesized memberwise initializer,
+    /// so the empty document is spelled out explicitly.
+    init() {}
+
+    /// See ``LibrarySettings/init(from:)``: a missing key must not destroy data.
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        watchlist = try container.decodeIfPresent([WatchlistEntry].self, forKey: .watchlist) ?? []
+        history = try container.decodeIfPresent([ResumePoint].self, forKey: .history) ?? []
+        settings = try container.decodeIfPresent(LibrarySettings.self, forKey: .settings) ?? LibrarySettings()
+    }
 }
 
 /// JSON-file backed ``LibraryStoring``.

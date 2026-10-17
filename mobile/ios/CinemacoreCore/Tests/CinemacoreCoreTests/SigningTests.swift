@@ -2,85 +2,68 @@ import Testing
 import Foundation
 @testable import CinemacoreCore
 
-/// The golden vectors are copied verbatim from `core/sign/sign_test.go`, which
-/// itself agrees byte-for-byte with the Python reference implementation
-/// (`moviebox-internal-api/moviebox_api/utils.py`). These five cases are the P1
-/// gate: if any of them regress, every signed request to the gateway breaks.
+/// The golden vectors live in `contracts/signing-vectors.json` and are shared
+/// with the Go implementation (`core/sign/sign_test.go`). One byte of drift
+/// breaks every signed request, so this suite is the P1 gate — and the shared
+/// file is what stops the two implementations diverging silently.
 @Suite("Signing — golden vectors")
 struct SigningGoldenVectorTests {
 
-    @Test("client token")
-    func clientToken() {
-        #expect(
-            Signing.clientToken(tsMillis: 1_700_000_000_000)
-                == "1700000000000,e41bb805cc23fdc5541917da93d608d5"
-        )
+    @Test("the fixture agrees with the compiled-in constants")
+    func constantsMatchFixture() throws {
+        let vectors = try SigningVectorFixture.load()
+        #expect(vectors.gatewaySecretBase64 == Signing.gatewaySecret)
+        #expect(vectors.bodySignatureMaxBytes == Signing.bodySignatureMaxBytes)
+        #expect(vectors.defaultAccept == Signing.defaultAccept)
+        #expect(vectors.defaultContentType == Signing.defaultContentType)
     }
 
-    @Test(
-        "TR signature",
-        arguments: [
-            (
-                "get with query",
-                "GET",
-                "https://apig.inmoviebox.com/wefeed-mobile-bff/subject-api/detail?subjectId=123&page=1&tab=0",
-                "",
-                Int64(1_700_000_000_000),
-                "1700000000000|2|5i4LuyUxUltzHNIEBhHQVA=="
-            ),
-            (
-                "post json body",
-                "POST",
-                "https://apig.inmoviebox.com/wefeed-mobile-bff/user-api/visitor-login",
-                #"{"clientInfo":{"package_name":"com.community.oneroom"}}"#,
-                Int64(1_700_000_000_001),
-                "1700000000001|2|M9uRwz5I5tm5vSBI8KEIzg=="
-            ),
-            (
-                "get no query",
-                "GET",
-                "https://apig.inmoviebox.com/wefeed-mobile-bff/search",
-                "",
-                Int64(1_700_000_000_002),
-                "1700000000002|2|V6DlEMNh1yxoNFQh540fzQ=="
-            ),
-            (
-                "body truncated at 102400",
-                "POST",
-                "https://apig.inmoviebox.com/x",
-                String(repeating: "a", count: 102_400) + "TRAILING_MUST_BE_IGNORED",
-                Int64(1_700_000_000_003),
-                "1700000000003|2|pyBOv/j+5I0FP6C30+yt5Q=="
-            ),
-            (
-                "duplicate + blank query keys",
-                "GET",
-                "https://apig.inmoviebox.com/p?b=2&a=1&a=3&c=",
-                "",
-                Int64(1_700_000_000_004),
-                "1700000000004|2|vD/OjEvR95UT2iXamt5jbA=="
-            ),
-        ]
-    )
-    func trSignature(
-        name: String,
-        method: String,
-        url: String,
-        body: String,
-        ts: Int64,
-        want: String
-    ) {
-        let got = Signing.trSignature(method: method, url: url, body: body, tsMillis: ts)
-        #expect(got == want, "\(name): got \(got), want \(want)")
+    @Test("client tokens")
+    func clientTokens() throws {
+        for vector in try SigningVectorFixture.load().clientTokens {
+            #expect(
+                Signing.clientToken(tsMillis: vector.tsMillis) == vector.token,
+                "ts \(vector.tsMillis)"
+            )
+        }
+    }
+
+    @Test("TR signatures")
+    func trSignatures() throws {
+        let vectors = try SigningVectorFixture.load()
+        for vector in vectors.trSignatures {
+            let got = Signing.trSignature(
+                method: vector.method,
+                url: vector.url,
+                accept: vectors.defaultAccept,
+                contentType: vectors.defaultContentType,
+                body: vector.resolvedBody,
+                tsMillis: vector.tsMillis
+            )
+            #expect(got == vector.expected, "\(vector.name): got \(got)")
+        }
+    }
+
+    @Test("canonical resource matches the Go reference byte for byte")
+    func resourceVectors() throws {
+        let cases = try SigningVectorFixture.load().resourceVectors.cases
+        #expect(!cases.isEmpty)
+        for vector in cases {
+            let got = Signing.resource(vector.input)
+            #expect(got == vector.expected, "resource(\(vector.input)) = \(got)")
+        }
     }
 
     @Test("gslb sign and password md5")
-    func gslbAndPassword() {
+    func gslbAndPassword() throws {
+        let vectors = try SigningVectorFixture.load()
         #expect(
-            Signing.gslbSign(packageName: "com.community.oneroom", deviceID: "868203051234567")
-                == "9071b411e7812cd20d564c3b523dda1c1b0abed0e9824273ff59cf3d903bb17d"
+            Signing.gslbSign(
+                packageName: vectors.gslbSign.packageName,
+                deviceID: vectors.gslbSign.deviceID
+            ) == vectors.gslbSign.expected
         )
-        #expect(Signing.passwordMD5("secret123") == "5d7845ac6ee7cfffafc5fe5f35cf666d")
+        #expect(Signing.passwordMD5(vectors.passwordMD5.input) == vectors.passwordMD5.expected)
     }
 }
 
@@ -108,7 +91,9 @@ struct SigningContractTests {
             tsMillis: 1_700_000_000_002
         )
         #expect(headers.trSignature == "1700000000002|2|V6DlEMNh1yxoNFQh540fzQ==")
-        #expect(headers.clientToken == "1700000000002,e41bb805cc23fdc5541917da93d608d5")
+        // The digest covers the *reversed* timestamp, so the token for ts=…002
+        // is not the token for ts=…000. Value derived independently (hashlib).
+        #expect(headers.clientToken == "1700000000002,b407eba694405ab44e9c4924d3d1f195")
         #expect(headers.accept == "application/json")
         #expect(headers.contentType == "application/json;charset=UTF-8")
     }

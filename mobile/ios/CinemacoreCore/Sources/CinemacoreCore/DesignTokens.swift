@@ -156,6 +156,5 @@ public enum Layout {
     /// Poster aspect ratio used by every rail and grid.
     public static let posterAspectRatio: Double = 2.0 / 3.0
 
-    public static let railHeight: Double = 210
     public static let gridMinimum: Double = 104
 }

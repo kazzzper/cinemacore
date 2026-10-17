@@ -11,8 +11,9 @@ import Foundation
 ///
 /// Every remote-looking value points at a host we control or at a reserved
 /// domain: posters use seeded `picsum.photos` URLs (the one URL the demo path
-/// really fetches) and playback uses `cdn.cinemacore.test`, which is never
-/// fetched because the player is not wired to it yet.
+/// really fetches) and playback uses `cdn.cinemacore.test`. `.test` is a
+/// reserved TLD that cannot resolve, so the player — which is wired to these
+/// URLs — fails at the network layer until the gateway serves real streams.
 public struct FixtureCatalogRepository: CatalogRepository {
     public init() {}
 
@@ -539,12 +540,13 @@ public struct FixtureCatalogRepository: CatalogRepository {
     ]
 
     private static let subjectsByID: [String: Subject] = Dictionary(
-        uniqueKeysWithValues: allSubjects.map { ($0.id, $0) }
+        allSubjects.map { ($0.id, $0) },
+        uniquingKeysWith: { first, _ in first }
     )
 
     /// Episode trees for every bundled series, keyed by subject id.
     private static let seasonsBySubjectID: [String: [Season]] = Dictionary(
-        uniqueKeysWithValues: [
+        [
             tree(theMandalorian, minutes: 42, seasonTitles: [
                 [
                     "Chapter 1: The Mandalorian", "Chapter 2: The Child", "Chapter 3: The Sin",
@@ -633,7 +635,8 @@ public struct FixtureCatalogRepository: CatalogRepository {
                     "Bastogne", "The Breaking Point", "The Last Patrol", "Why We Fight", "Points",
                 ],
             ]),
-        ]
+        ],
+        uniquingKeysWith: { first, _ in first }
     )
 
     // MARK: - Rails

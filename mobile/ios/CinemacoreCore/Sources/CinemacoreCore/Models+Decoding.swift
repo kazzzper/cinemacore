@@ -11,8 +11,16 @@ import Foundation
 //
 // The synthesised memberwise initialisers remain the public, non-optional API:
 // only the decoding path is forgiving.
+//
+// Supplying `init(from:)` suppresses the compiler's synthesised `CodingKeys`,
+// so each type declares them explicitly here.
 
 extension Subject {
+    public enum CodingKeys: String, CodingKey {
+        case id, title, poster, year, rating, kind, synopsis, genres, dubs
+        case durationMinutes, seasonCount, cast, resourceDetectors
+    }
+
     public init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decode(String.self, forKey: .id)
@@ -33,6 +41,10 @@ extension Subject {
 }
 
 extension CastMember {
+    public enum CodingKeys: String, CodingKey {
+        case name, role, avatar
+    }
+
     public init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         name = try container.decode(String.self, forKey: .name)
@@ -42,6 +54,10 @@ extension CastMember {
 }
 
 extension ResourceDetector {
+    public enum CodingKeys: String, CodingKey {
+        case resourceId, name
+    }
+
     public init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         resourceId = try container.decode(String.self, forKey: .resourceId)
@@ -52,17 +68,12 @@ extension ResourceDetector {
 extension Episode {
     /// The gateway spells this `subjectId` (`core/models/models.go`), so the
     /// wire key is pinned rather than derived from the property name.
-    private enum WireKeys: String, CodingKey {
-        case subjectId
-        case season
-        case number
-        case title
-        case duration
-        case still
+    public enum CodingKeys: String, CodingKey {
+        case subjectId, season, number, title, duration, still
     }
 
     public init(from decoder: any Decoder) throws {
-        let container = try decoder.container(keyedBy: WireKeys.self)
+        let container = try decoder.container(keyedBy: CodingKeys.self)
         subjectID = try container.decode(String.self, forKey: .subjectId)
         season = try container.decode(Int.self, forKey: .season)
         number = try container.decode(Int.self, forKey: .number)
@@ -72,7 +83,7 @@ extension Episode {
     }
 
     public func encode(to encoder: any Encoder) throws {
-        var container = encoder.container(keyedBy: WireKeys.self)
+        var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(subjectID, forKey: .subjectId)
         try container.encode(season, forKey: .season)
         try container.encode(number, forKey: .number)
@@ -83,6 +94,10 @@ extension Episode {
 }
 
 extension Season {
+    public enum CodingKeys: String, CodingKey {
+        case number, episodes
+    }
+
     public init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         number = try container.decode(Int.self, forKey: .number)
@@ -91,6 +106,10 @@ extension Season {
 }
 
 extension SubjectDetail {
+    public enum CodingKeys: String, CodingKey {
+        case subject, seasons
+    }
+
     public init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         subject = try container.decode(Subject.self, forKey: .subject)
@@ -99,6 +118,10 @@ extension SubjectDetail {
 }
 
 extension Section {
+    public enum CodingKeys: String, CodingKey {
+        case title, items
+    }
+
     public init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         title = try container.decode(String.self, forKey: .title)
@@ -107,6 +130,10 @@ extension Section {
 }
 
 extension Page {
+    public enum CodingKeys: String, CodingKey {
+        case sections
+    }
+
     public init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         sections = try container.decodeIfPresent([Section].self, forKey: .sections) ?? []
@@ -114,6 +141,10 @@ extension Page {
 }
 
 extension StreamRendition {
+    public enum CodingKeys: String, CodingKey {
+        case quality, url, size, cookie
+    }
+
     public init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         quality = try container.decode(String.self, forKey: .quality)
@@ -124,6 +155,10 @@ extension StreamRendition {
 }
 
 extension SubtitleTrack {
+    public enum CodingKeys: String, CodingKey {
+        case language, url, format
+    }
+
     public init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         language = try container.decode(String.self, forKey: .language)
@@ -133,6 +168,10 @@ extension SubtitleTrack {
 }
 
 extension PlayInfo {
+    public enum CodingKeys: String, CodingKey {
+        case streams, subtitles
+    }
+
     public init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         streams = try container.decodeIfPresent([StreamRendition].self, forKey: .streams) ?? []

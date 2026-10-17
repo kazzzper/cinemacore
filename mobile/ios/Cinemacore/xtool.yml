@@ -1,2 +1,8 @@
 version: 1
 bundleID: com.cinemacore.app
+product: Cinemacore
+infoPath: Info.plist
+iconPath: Resources/AppIcon.png
+# Copied to the .app root. `UILaunchScreen` references SplashLogo by name.
+resources:
+  - Resources/SplashLogo.png

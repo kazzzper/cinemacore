@@ -12,6 +12,31 @@ struct SubjectTests {
         #expect(!Subject(id: "4", title: "D", kind: "1", seasonCount: 1).isSeries)
     }
 
+    @Test("the live gateway's kind vocabulary is honoured")
+    func liveKindVocabulary() {
+        // Live responses send "series" rather than the contract's "2", and a
+        // one-season series is common — seasonCount alone would call it a movie.
+        #expect(Subject(id: "1", title: "A", kind: "series", seasonCount: 1).isSeries)
+        #expect(Subject(id: "2", title: "B", kind: "SERIES", seasonCount: 1).isSeries)
+        #expect(!Subject(id: "3", title: "C", kind: "movie", seasonCount: 1).isSeries)
+        #expect(!Subject(id: "4", title: "D", kind: "film", seasonCount: 1).isSeries)
+        // An unrecognised kind still falls back to the season count.
+        #expect(Subject(id: "5", title: "E", kind: "docu", seasonCount: 2).isSeries)
+        #expect(!Subject(id: "6", title: "F", kind: "docu", seasonCount: 1).isSeries)
+    }
+
+    @Test("live quality labels carry no resolution suffix")
+    func liveQualityLabels() {
+        // Live streams are labelled "1080"/"720"/"480" — no trailing 'p'.
+        let info = PlayInfo(streams: [
+            StreamRendition(quality: "1080", url: "u"),
+            StreamRendition(quality: "720", url: "u"),
+            StreamRendition(quality: "480", url: "u"),
+        ])
+        #expect(info.rankedStreams.map(\.quality) == ["1080", "720", "480"])
+        #expect(info.preferredStream?.quality == "1080")
+    }
+
     @Test("duration renders hours and minutes without a zero-minute tail")
     func durationText() {
         #expect(Subject(id: "1", title: "A", durationMinutes: 128).durationText == "2h 8m")
@@ -274,12 +299,15 @@ struct LoadStateTests {
 
     @Test("from collapses an empty collection to .empty")
     func fromCollection() {
-        // The generic is spelled out because `#expect` supplies no contextual
-        // type; at a real call site the assignment target drives inference.
-        #expect(LoadState<[Int]>.from([]).value == nil)
-        #expect(LoadState<[Int]>.from([1, 2]).value == [1, 2])
+        // The type is pinned on a local rather than inside `#expect`: the macro
+        // re-writes its argument, and a generic static call there leaves the
+        // payload type unresolved (`Any`, which is not `Sendable`).
+        let empty: LoadState<[Int]> = .from([])
+        let two: LoadState<[Int]> = .from([1, 2])
+        #expect(empty.value == nil)
+        #expect(two.value == [1, 2])
 
-        let withNotice = LoadState<[Int]>.from([1], notice: "stale")
+        let withNotice: LoadState<[Int]> = .from([1], notice: "stale")
         #expect(withNotice.value == [1])
         switch withNotice {
         case .partial(let values, let notice):
