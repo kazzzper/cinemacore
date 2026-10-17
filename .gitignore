@@ -4,7 +4,12 @@
 *.jks
 *.keystore
 *.p12
+*.p8
+*.pem
+*.cer
+*.certSigningRequest
 *.mobileprovision
+AuthKey_*.p8
 XTLAuthToken
 
 # Go
@@ -12,6 +17,7 @@ XTLAuthToken
 /dist/
 *.test
 *.out
+/cinemacore
 
 # Node (tasks CLI)
 node_modules/
@@ -24,13 +30,19 @@ mobile/android/app/build/
 *.apk
 *.aab
 
-# Xcode / Swift / xtool
-.build/
+# SwiftPM / Swift / Xcode build output
+# `.build*/` covers scratch-path variants: .build, .build-main, .build-fixtures.
+.build*/
 .swiftpm/
+*.xcodeproj/
+*.xcresult
 *.xcuserstate
 xcuserdata/
-mobile/ios/xtool/
 DerivedData/
+
+# xtool
+mobile/ios/xtool/
+.bsp/
 
 # Rust
 tools/tui/target/
@@ -38,5 +50,11 @@ tools/tui/target/
 # Editors / OS
 .idea/
 .vscode/
+.fleet/
+.history/
 *.swp
+*.swo
+*~
+*.sublime-workspace
 .DS_Store
+.Trash-*

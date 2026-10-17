@@ -1,0 +1,36 @@
+#!/bin/sh
+# Enforces Conventional Commits — see rules/07-git-commits.md.
+# Enable once per clone:  git config core.hooksPath .githooks
+set -eu
+
+msg_file="${1:?commit message file required}"
+subject=$(head -n1 "$msg_file")
+
+# Let merges, reverts and autosquash through untouched.
+case "$subject" in
+  "Merge "*|"Revert "*|"fixup!"*|"squash!"*|"amend!"*) exit 0 ;;
+esac
+
+types='feat|fix|refactor|perf|test|docs|build|ci|chore|style'
+
+if ! printf '%s' "$subject" | grep -Eq "^($types)(\([a-z0-9._-]+\))?!?: .+"; then
+  cat >&2 <<EOF
+✖ Commit message must follow Conventional Commits (rules/07-git-commits.md).
+
+  Expected:  <type>(<scope>): <summary>
+  Types:     feat fix refactor perf test docs build ci chore style
+  Got:       $subject
+EOF
+  exit 1
+fi
+
+if [ "${#subject}" -gt 72 ]; then
+  printf '✖ Subject is %s chars; keep it ≤72.\n' "${#subject}" >&2
+  exit 1
+fi
+
+case "$subject" in
+  *.) printf '✖ Subject must not end with a period.\n' >&2; exit 1 ;;
+esac
+
+exit 0

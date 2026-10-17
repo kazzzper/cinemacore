@@ -28,6 +28,7 @@ Applies to every change, in every language. Overrides style preferences.
 - Do not mix refactor + behaviour change in one commit.
 - Do not introduce a dependency for something the stdlib/platform already does.
 - Do not leave TODOs without a `tasks/` entry.
+- Do not narrate code in comments — see [`08-comments.md`](08-comments.md).
 
 ## Review checklist
 

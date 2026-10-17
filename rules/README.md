@@ -13,7 +13,8 @@ Guidelines every agent and human follows in this repo. `AGENTS.md` links here; i
 | [`04-rust-tui.md`](04-rust-tui.md) | Rust TUI |
 | [`05-api-contract.md`](05-api-contract.md) | Contract-first API |
 | [`06-testing.md`](06-testing.md) | Tests, golden vectors |
-| [`07-git-commits.md`](07-git-commits.md) | Commits & history |
+| [`07-git-commits.md`](07-git-commits.md) | Commits & history — **enforced** by `.githooks/` |
+| [`08-comments.md`](08-comments.md) | Comments: the *why*, never the *what* |
 | [`sources.md`](sources.md) | Provenance for every rule above |
 
 ## Precedence

@@ -33,6 +33,9 @@ cd mobile/android && ./gradlew assembleDebug
 
 # Work tracking (any harness)
 node tasks/bin/tasks.mjs status
+
+# Enable repo git hooks (once per clone) — enforces Conventional Commits
+git config core.hooksPath .githooks
 ```
 
 Missing toolchain? `go` ✅ · `swift` ✅ (6.4.1) · `xtool` ✅ · JDK/Gradle/Android SDK ❌ (needed for Android).
@@ -64,13 +67,17 @@ node tasks/bin/tasks.mjs board            # regenerate BOARD.md
 | [`rules/04-rust-tui.md`](rules/04-rust-tui.md) | Rust TUI |
 | [`rules/05-api-contract.md`](rules/05-api-contract.md) | Contract-first API |
 | [`rules/06-testing.md`](rules/06-testing.md) | Tests, golden vectors |
-| [`rules/07-git-commits.md`](rules/07-git-commits.md) | Conventional Commits |
+| [`rules/07-git-commits.md`](rules/07-git-commits.md) | Conventional Commits (**enforced by hook**) |
+| [`rules/08-comments.md`](rules/08-comments.md) | Comments: the *why*, never the *what* |
 
 Provenance for every rule: [`rules/sources.md`](rules/sources.md).
 
 ## 4. Style in one breath
 
-Smallest correct change. **One-line fix beats a 100-line rewrite.** Code over prose. No dead code, no filler comments, no speculative abstraction. **No loss** — behaviour, types, tests, and error paths preserved; shorter never means fewer cases handled.
+Smallest correct change. **One-line fix beats a 100-line rewrite.** Code over prose. No dead code, no
+filler comments, no speculative abstraction. **Comment the *why*, never the *what*** — see
+[`rules/08-comments.md`](rules/08-comments.md). **No loss** — behaviour, types, tests, and error paths
+preserved; shorter never means fewer cases handled.
 
 ## 5. Definition of done
 
@@ -79,10 +86,13 @@ Smallest correct change. **One-line fix beats a 100-line rewrite.** Code over pr
 3. Contract updated + clients regenerated if the wire API changed.
 4. `tasks` updated (`done`).
 5. Diff reviewed against `rules/00-senior-doctrine.md`.
+6. Commit follows [Conventional Commits](rules/07-git-commits.md) — enforced by `.githooks/commit-msg`.
 
 ## 6. Guardrails
 
 - Never hand-roll HTTP. Use stdlib/`swift-nio`/Ktor.
+- Never write narration comments — comment the *why* (`rules/08-comments.md`).
+- Never bypass the `commit-msg` hook with `--no-verify`.
 - Never commit secrets, tokens, or `release-key.jks`.
 - Never edit generated code (`*.gen.go`, generated clients) by hand.
 - Never weaken the signing contract; `core/sign` is versioned and frozen.

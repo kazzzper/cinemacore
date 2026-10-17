@@ -22,6 +22,17 @@ Scopes: `core` `sign` `session` `provider` `catalog` `store` `fetch` `server` `i
 - Never force-push a shared branch.
 - Never commit secrets, tokens, `*.jks`, `*.keystore`, or `.env`.
 
+## Enforcement
+
+`.githooks/commit-msg` rejects any subject that is not `<type>(<scope>): <summary>`, longer than 72
+chars, or ending in a period. Enable it once per clone:
+
+```bash
+git config core.hooksPath .githooks
+```
+
+Agents must **never** bypass it with `--no-verify`.
+
 ## PRs
 - Describe: what, why, and the contract/behaviour impact.
 - Green build + tests + regenerated contract required.
