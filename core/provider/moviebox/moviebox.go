@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
+	"strconv"
 
 	"github.com/solo12345689/cinemacore/core/models"
 	"github.com/solo12345689/cinemacore/core/session"
@@ -49,9 +50,16 @@ func (p *Provider) Episodes(ctx context.Context, id string) ([]models.Episode, e
 }
 
 // Stream resolves a playback source.
-func (p *Provider) Stream(ctx context.Context, id string) (models.Stream, error) {
+func (p *Provider) Stream(ctx context.Context, id string, season, episode int) (models.Stream, error) {
+	params := []string{"subjectId", id}
+	if season > 0 {
+		params = append(params, "season", strconv.Itoa(season))
+	}
+	if episode > 0 {
+		params = append(params, "episode", strconv.Itoa(episode))
+	}
 	var out models.Stream
-	err := p.data(ctx, "/wefeed-mobile-bff/subject-api/play-info?"+query("subjectId", id), &out)
+	err := p.data(ctx, "/wefeed-mobile-bff/subject-api/play-info?"+query(params...), &out)
 	return out, err
 }
 

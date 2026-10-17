@@ -5,9 +5,11 @@ package server
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/solo12345689/cinemacore/core/catalog"
@@ -45,7 +47,10 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /openapi.json", s.openapi)
 	mux.HandleFunc("GET /v1/home", s.home)
 	mux.HandleFunc("GET /v1/search", s.search)
+	mux.HandleFunc("GET /v1/search/suggestions", s.suggestions)
 	mux.HandleFunc("GET /v1/detail/{id}", s.detail)
+	mux.HandleFunc("GET /v1/detail/{id}/seasons", s.seasons)
+	mux.HandleFunc("GET /v1/play", s.play)
 	return mux
 }
 
@@ -64,6 +69,7 @@ func (s *Server) openapi(w http.ResponseWriter, _ *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/yaml")
+	w.Header().Set("X-API-Version", "1")
 	w.Write(b)
 }
 
@@ -97,6 +103,67 @@ func (s *Server) detail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, sub)
+}
+
+func (s *Server) seasons(w http.ResponseWriter, r *http.Request) {
+	seasons, err := s.cat.Seasons(r.Context(), r.PathValue("id"))
+	if err != nil {
+		s.fail(w, "seasons", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"seasons": seasons})
+}
+
+func (s *Server) play(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	id := q.Get("subjectId")
+	if id == "" {
+		writeErr(w, http.StatusBadRequest, "missing_subject", "query parameter subjectId is required")
+		return
+	}
+	season, err := intParam(q.Get("season"))
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid_season", err.Error())
+		return
+	}
+	episode, err := intParam(q.Get("episode"))
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid_episode", err.Error())
+		return
+	}
+	info, err := s.cat.Play(r.Context(), id, season, episode)
+	if err != nil {
+		s.fail(w, "play", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, info)
+}
+
+func (s *Server) suggestions(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query().Get("q")
+	if q == "" {
+		writeErr(w, http.StatusBadRequest, "missing_query", "query parameter q is required")
+		return
+	}
+	items, err := s.cat.Suggestions(r.Context(), q)
+	if err != nil {
+		s.fail(w, "suggestions", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"items": items})
+}
+
+// intParam parses an optional non-negative integer query value; an absent or
+// empty value is zero (movie semantics).
+func intParam(raw string) (int, error) {
+	if raw == "" {
+		return 0, nil
+	}
+	n, err := strconv.Atoi(raw)
+	if err != nil || n < 0 {
+		return 0, fmt.Errorf("expected a non-negative integer, got %q", raw)
+	}
+	return n, nil
 }
 
 func (s *Server) fail(w http.ResponseWriter, op string, err error) {

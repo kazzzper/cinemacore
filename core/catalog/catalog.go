@@ -65,14 +65,85 @@ func (c *Catalog) Episodes(ctx context.Context, id string) ([]models.Episode, er
 	return c.first(func(p provider.Provider) ([]models.Episode, error) { return p.Episodes(ctx, id) })
 }
 
+// Seasons groups a series' episodes by season number, in ascending order.
+func (c *Catalog) Seasons(ctx context.Context, id string) ([]models.Season, error) {
+	episodes, err := c.Episodes(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	byNumber := map[int][]models.Episode{}
+	var numbers []int
+	for _, e := range episodes {
+		if _, seen := byNumber[e.Season]; !seen {
+			numbers = append(numbers, e.Season)
+		}
+		byNumber[e.Season] = append(byNumber[e.Season], e)
+	}
+	sort.Ints(numbers)
+	seasons := make([]models.Season, 0, len(numbers))
+	for _, n := range numbers {
+		eps := byNumber[n]
+		sort.Slice(eps, func(i, j int) bool { return eps[i].Number < eps[j].Number })
+		seasons = append(seasons, models.Season{Number: n, Episodes: eps})
+	}
+	return seasons, nil
+}
+
 // Stream returns the first provider that resolves id.
-func (c *Catalog) Stream(ctx context.Context, id string) (models.Stream, error) {
-	return c.first(func(p provider.Provider) (models.Stream, error) { return p.Stream(ctx, id) })
+func (c *Catalog) Stream(ctx context.Context, id string, season, episode int) (models.Stream, error) {
+	return c.first(func(p provider.Provider) (models.Stream, error) {
+		return p.Stream(ctx, id, season, episode)
+	})
 }
 
 // Subtitles returns the first provider that resolves id.
 func (c *Catalog) Subtitles(ctx context.Context, id string) ([]models.Subtitle, error) {
 	return c.first(func(p provider.Provider) ([]models.Subtitle, error) { return p.Subtitles(ctx, id) })
+}
+
+// Play composes a subject's stream renditions and subtitle tracks. Streams are
+// required; subtitles are best-effort, so a title that has none still plays.
+func (c *Catalog) Play(ctx context.Context, id string, season, episode int) (models.PlayInfo, error) {
+	stream, err := c.Stream(ctx, id, season, episode)
+	if err != nil {
+		return models.PlayInfo{}, err
+	}
+	info := models.PlayInfo{Streams: renditions(stream), Subtitles: []models.SubtitleTrack{}}
+	if subs, err := c.Subtitles(ctx, id); err == nil {
+		for _, s := range subs {
+			info.Subtitles = append(info.Subtitles, models.SubtitleTrack{
+				Language: s.Lang, URL: s.URL, Format: s.Format,
+			})
+		}
+	}
+	return info, nil
+}
+
+// Suggestions returns type-ahead terms for a query, derived from search results.
+func (c *Catalog) Suggestions(ctx context.Context, q string) ([]string, error) {
+	items, err := c.Search(ctx, q)
+	if err != nil {
+		return nil, err
+	}
+	terms := make([]string, 0, len(items))
+	for _, s := range items {
+		if s.Title != "" {
+			terms = append(terms, s.Title)
+		}
+	}
+	return terms, nil
+}
+
+// renditions flattens a stream's qualities, falling back to the bare URL.
+func renditions(s models.Stream) []models.StreamRendition {
+	out := make([]models.StreamRendition, 0, len(s.Qualities))
+	for _, q := range s.Qualities {
+		out = append(out, models.StreamRendition{Quality: q.Label, URL: q.URL})
+	}
+	if len(out) == 0 && s.URL != "" {
+		out = append(out, models.StreamRendition{Quality: "Auto", URL: s.URL})
+	}
+	return out
 }
 
 // first tries each provider in order, returning the first success.

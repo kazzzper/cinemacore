@@ -145,6 +145,8 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/PlayInfo" }
+        "400":
+          $ref: "#/components/responses/Error"
         "502":
           $ref: "#/components/responses/Upstream"
   /v1/search/suggestions:

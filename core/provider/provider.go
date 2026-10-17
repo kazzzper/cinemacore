@@ -15,6 +15,8 @@ type Provider interface {
 	Search(ctx context.Context, query string) ([]models.Subject, error)
 	Detail(ctx context.Context, id string) (models.Subject, error)
 	Episodes(ctx context.Context, id string) ([]models.Episode, error)
-	Stream(ctx context.Context, id string) (models.Stream, error)
+	// Stream resolves one playback source. A movie passes season and episode as
+	// zero; a series passes both, and the provider answers with that episode.
+	Stream(ctx context.Context, id string, season, episode int) (models.Stream, error)
 	Subtitles(ctx context.Context, id string) ([]models.Subtitle, error)
 }

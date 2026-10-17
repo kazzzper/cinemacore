@@ -4,15 +4,32 @@ package models
 
 // Subject is a movie, series, or other catalog entry.
 type Subject struct {
-	ID       string   `json:"id"`
-	Title    string   `json:"title"`
-	Poster   string   `json:"poster,omitempty"`
-	Year     int      `json:"year,omitempty"`
-	Rating   float64  `json:"rating,omitempty"`
-	Kind     string   `json:"kind,omitempty"`
-	Synopsis string   `json:"synopsis,omitempty"`
-	Genres   []string `json:"genres,omitempty"`
-	Dubs     []string `json:"dubs,omitempty"`
+	ID                string             `json:"id"`
+	Title             string             `json:"title"`
+	Poster            string             `json:"poster,omitempty"`
+	Year              int                `json:"year,omitempty"`
+	Rating            float64            `json:"rating,omitempty"`
+	Kind              string             `json:"kind,omitempty"`
+	Synopsis          string             `json:"synopsis,omitempty"`
+	Genres            []string           `json:"genres,omitempty"`
+	Dubs              []string           `json:"dubs,omitempty"`
+	DurationMinutes   int                `json:"durationMinutes,omitempty"`
+	SeasonCount       int                `json:"seasonCount,omitempty"`
+	Cast              []CastMember       `json:"cast,omitempty"`
+	ResourceDetectors []ResourceDetector `json:"resourceDetectors,omitempty"`
+}
+
+// CastMember is one credited person.
+type CastMember struct {
+	Name   string `json:"name"`
+	Role   string `json:"role,omitempty"`
+	Avatar string `json:"avatar,omitempty"`
+}
+
+// ResourceDetector is one provider playable resource, such as a dub variant.
+type ResourceDetector struct {
+	ResourceID string `json:"resourceId"`
+	Name       string `json:"name"`
 }
 
 // Episode identifies one season/episode of a series subject.
@@ -21,6 +38,12 @@ type Episode struct {
 	Season    int    `json:"season"`
 	Number    int    `json:"number"`
 	Title     string `json:"title,omitempty"`
+}
+
+// Season groups a series' episodes.
+type Season struct {
+	Number   int       `json:"number"`
+	Episodes []Episode `json:"episodes"`
 }
 
 // Quality is one selectable stream rendition.
@@ -41,6 +64,27 @@ type Subtitle struct {
 	Lang   string `json:"lang"`
 	URL    string `json:"url"`
 	Format string `json:"format,omitempty"`
+}
+
+// StreamRendition is one selectable playback rendition.
+type StreamRendition struct {
+	Quality string `json:"quality"`
+	URL     string `json:"url"`
+	Size    string `json:"size,omitempty"`
+	Cookie  string `json:"cookie,omitempty"`
+}
+
+// SubtitleTrack is one caption track in a PlayInfo payload.
+type SubtitleTrack struct {
+	Language string `json:"language"`
+	URL      string `json:"url"`
+	Format   string `json:"format,omitempty"`
+}
+
+// PlayInfo is the resolved playback payload for one episode or movie.
+type PlayInfo struct {
+	Streams   []StreamRendition `json:"streams"`
+	Subtitles []SubtitleTrack   `json:"subtitles"`
 }
 
 // Section is a titled row of subjects (home rails, category rows).
