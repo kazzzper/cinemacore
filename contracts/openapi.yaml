@@ -1,0 +1,182 @@
+openapi: 3.1.0
+info:
+  title: Cinemacore API
+  version: 0.1.0
+  description: |
+    Source of truth for the Cinemacore wire API. The Go server, Swift client,
+    and Kotlin client are all generated from this document. Additive changes
+    only within a major version (see rules/05-api-contract.md).
+servers:
+  - url: http://localhost:8080
+    description: local
+tags:
+  - name: system
+  - name: browse
+  - name: title
+paths:
+  /health:
+    get:
+      tags: [system]
+      operationId: health
+      responses:
+        "200":
+          description: Service is up
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status: { type: string, enum: [ok] }
+  /version:
+    get:
+      tags: [system]
+      operationId: version
+      responses:
+        "200":
+          description: Build version
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [version]
+                properties:
+                  version: { type: string }
+  /v1/home:
+    get:
+      tags: [browse]
+      operationId: home
+      responses:
+        "200":
+          description: Landing sections
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Page" }
+        "502":
+          $ref: "#/components/responses/Upstream"
+  /v1/search:
+    get:
+      tags: [browse]
+      operationId: search
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Matching subjects
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/Subject" }
+        "400":
+          $ref: "#/components/responses/Error"
+        "502":
+          $ref: "#/components/responses/Upstream"
+  /v1/detail/{id}:
+    get:
+      tags: [title]
+      operationId: detail
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: One subject
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Subject" }
+        "502":
+          $ref: "#/components/responses/Upstream"
+components:
+  responses:
+    Error:
+      description: Typed error envelope
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Upstream:
+      description: Provider call failed
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+  schemas:
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code: { type: string }
+        message: { type: string }
+        detail: { type: object, additionalProperties: true }
+    Subject:
+      type: object
+      required: [id, title]
+      properties:
+        id: { type: string }
+        title: { type: string }
+        poster: { type: string }
+        year: { type: integer }
+        rating: { type: number }
+        kind: { type: string }
+        synopsis: { type: string }
+        genres:
+          type: array
+          items: { type: string }
+        dubs:
+          type: array
+          items: { type: string }
+    Section:
+      type: object
+      required: [title, items]
+      properties:
+        title: { type: string }
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/Subject" }
+    Page:
+      type: object
+      required: [sections]
+      properties:
+        sections:
+          type: array
+          items: { $ref: "#/components/schemas/Section" }
+    Episode:
+      type: object
+      required: [subjectId, season, number]
+      properties:
+        subjectId: { type: string }
+        season: { type: integer }
+        number: { type: integer }
+        title: { type: string }
+    Quality:
+      type: object
+      required: [label, url]
+      properties:
+        label: { type: string }
+        url: { type: string }
+    Stream:
+      type: object
+      required: [url]
+      properties:
+        url: { type: string }
+        qualities:
+          type: array
+          items: { $ref: "#/components/schemas/Quality" }
+        headers:
+          type: object
+          additionalProperties: { type: string }
+    Subtitle:
+      type: object
+      required: [lang, url]
+      properties:
+        lang: { type: string }
+        url: { type: string }
+        format: { type: string }

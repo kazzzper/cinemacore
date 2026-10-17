@@ -1,0 +1,42 @@
+# Secrets — never commit
+.env
+.env.*
+*.jks
+*.keystore
+*.p12
+*.mobileprovision
+XTLAuthToken
+
+# Go
+/bin/
+/dist/
+*.test
+*.out
+
+# Node (tasks CLI)
+node_modules/
+
+# Gradle / Android
+.gradle/
+mobile/android/build/
+mobile/android/local.properties
+mobile/android/app/build/
+*.apk
+*.aab
+
+# Xcode / Swift / xtool
+.build/
+.swiftpm/
+*.xcuserstate
+xcuserdata/
+mobile/ios/xtool/
+DerivedData/
+
+# Rust
+tools/tui/target/
+
+# Editors / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store

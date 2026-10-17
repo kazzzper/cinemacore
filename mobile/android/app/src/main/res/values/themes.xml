@@ -1,0 +1,6 @@
+<resources>
+    <style name="Theme.Cinemacore" parent="android:Theme.Material.NoActionBar">
+        <item name="android:statusBarColor">#0B0B0F</item>
+        <item name="android:windowBackground">#0B0B0F</item>
+    </style>
+</resources>

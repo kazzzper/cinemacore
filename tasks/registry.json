@@ -1,0 +1,122 @@
+{
+  "agents": [
+    {
+      "id": "scaffold",
+      "harness": "opencode",
+      "model": null,
+      "startedAt": "2026-10-17T15:14:52.325Z",
+      "lastSeen": "2026-10-17T15:14:52.326Z"
+    }
+  ],
+  "tasks": [
+    {
+      "id": "T-001",
+      "title": "Repo skeleton, AGENTS.md, rules, tasks CLI, OpenAPI contract",
+      "status": "done",
+      "module": "repo",
+      "owner": "scaffold",
+      "deps": [],
+      "acceptance": "tasks status runs; contract parses; Go core+server build",
+      "updatedAt": "2026-10-17T15:16:47.652Z",
+      "links": [
+        "AGENTS.md",
+        "rules/",
+        "contracts/openapi.yaml"
+      ]
+    },
+    {
+      "id": "T-002",
+      "title": "Go signing core (core/sign) + golden vectors",
+      "status": "done",
+      "module": "core/sign",
+      "owner": "scaffold",
+      "deps": [
+        "T-001"
+      ],
+      "acceptance": "go test ./core/sign passes byte-for-byte vs Python reference vectors",
+      "updatedAt": "2026-10-17T15:16:47.734Z",
+      "links": [
+        "core/sign/sign.go"
+      ]
+    },
+    {
+      "id": "T-003",
+      "title": "Go session (guest bootstrap, host pool) + provider/moviebox",
+      "status": "todo",
+      "module": "core/session",
+      "owner": null,
+      "deps": [
+        "T-002"
+      ],
+      "acceptance": "signed live calls return data; host failover unit-tested",
+      "updatedAt": "2026-10-17T00:00:00.000Z",
+      "links": []
+    },
+    {
+      "id": "T-004",
+      "title": "Go server: auth/browse/search/title + contract conformance",
+      "status": "todo",
+      "module": "server",
+      "owner": null,
+      "deps": [
+        "T-002"
+      ],
+      "acceptance": "contract conformance tests green; serves :8080",
+      "updatedAt": "2026-10-17T00:00:00.000Z",
+      "links": []
+    },
+    {
+      "id": "T-005",
+      "title": "Go store + library + fetch (SQLite watchlist/history, downloads)",
+      "status": "todo",
+      "module": "core/store",
+      "owner": null,
+      "deps": [
+        "T-004"
+      ],
+      "acceptance": "resume/interrupt tests; SQLite persistence",
+      "updatedAt": "2026-10-17T00:00:00.000Z",
+      "links": []
+    },
+    {
+      "id": "T-006",
+      "title": "Android app (Compose) — requires JDK/Gradle/Android SDK",
+      "status": "blocked",
+      "module": "mobile/android",
+      "owner": null,
+      "deps": [
+        "T-004"
+      ],
+      "acceptance": "assembleDebug green; six content states covered",
+      "updatedAt": "2026-10-17T00:00:00.000Z",
+      "links": []
+    },
+    {
+      "id": "T-007",
+      "title": "iOS app (SwiftUI) via xtool — build on device",
+      "status": "todo",
+      "module": "mobile/ios",
+      "owner": null,
+      "deps": [
+        "T-004"
+      ],
+      "acceptance": "xtool dev build produces app; six states; iPad split view",
+      "updatedAt": "2026-10-17T00:00:00.000Z",
+      "links": []
+    },
+    {
+      "id": "T-008",
+      "title": "gobind facade + swift-nio loopback proxy + TUI repoint",
+      "status": "todo",
+      "module": "mobile/gobind",
+      "owner": null,
+      "deps": [
+        "T-005",
+        "T-007"
+      ],
+      "acceptance": "offline path works; go test ./... -race green",
+      "updatedAt": "2026-10-17T00:00:00.000Z",
+      "links": []
+    }
+  ]
+}
