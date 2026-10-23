@@ -32,7 +32,10 @@ public protocol LibraryStoring: Sendable {
 /// User-adjustable settings. Mirrors the Android app's `PreferencesManager`
 /// surface, minus the reverse-engineering knobs the Lab screen hides.
 public struct LibrarySettings: Codable, Hashable, Sendable {
-    /// Base URL of the Cinemacore gateway. `nil` uses the bundled catalog.
+    /// Which catalog source to use. Built-in (native, no gateway) is the
+    /// default; the gateway is a deliberate override.
+    public var catalogSourceMode: String
+    /// Base URL of the Cinemacore gateway, used only in gateway mode.
     public var gatewayURL: String?
     /// Preferred dub language label, when the title offers it.
     public var preferredLanguage: String?
@@ -51,6 +54,7 @@ public struct LibrarySettings: Codable, Hashable, Sendable {
     public var downloadGrouping: DownloadGrouping
 
     public init(
+        catalogSourceMode: String = "builtIn",
         gatewayURL: String? = nil,
         preferredLanguage: String? = nil,
         hiddenRails: Set<String> = [],
@@ -61,6 +65,7 @@ public struct LibrarySettings: Codable, Hashable, Sendable {
         downloadSortAscending: Bool = false,
         downloadGrouping: DownloadGrouping = .none
     ) {
+        self.catalogSourceMode = catalogSourceMode
         self.gatewayURL = gatewayURL
         self.preferredLanguage = preferredLanguage
         self.hiddenRails = hiddenRails
@@ -73,7 +78,7 @@ public struct LibrarySettings: Codable, Hashable, Sendable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case gatewayURL, preferredLanguage, hiddenRails, categoryOrder, playbackSpeed, autoPlayNext
+        case catalogSourceMode, gatewayURL, preferredLanguage, hiddenRails, categoryOrder, playbackSpeed, autoPlayNext
         case downloadSortKey, downloadSortAscending, downloadGrouping
     }
 
@@ -81,6 +86,8 @@ public struct LibrarySettings: Codable, Hashable, Sendable {
     /// keys added since, and one missing key must not discard the user's library.
     public init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
+        catalogSourceMode = try container.decodeIfPresent(String.self, forKey: .catalogSourceMode)
+            ?? "builtIn"
         gatewayURL = try container.decodeIfPresent(String.self, forKey: .gatewayURL)
         preferredLanguage = try container.decodeIfPresent(String.self, forKey: .preferredLanguage)
         hiddenRails = try container.decodeIfPresent(Set<String>.self, forKey: .hiddenRails) ?? []
@@ -95,8 +102,13 @@ public struct LibrarySettings: Codable, Hashable, Sendable {
             ?? .none
     }
 
-    /// The default gateway probed at launch when the user has not chosen one.
+    /// The gateway used when gateway mode is chosen without a URL.
     public static let defaultGatewayURL = "http://127.0.0.1:8080"
+
+    /// The effective source mode, tolerating a value from an older document.
+    public var sourceMode: CatalogResolver.SourceMode {
+        CatalogResolver.SourceMode(rawValue: catalogSourceMode) ?? .builtIn
+    }
 }
 
 /// The on-disk document. One file keeps the write path atomic and the whole

@@ -46,6 +46,17 @@ public struct DownloadItem: Identifiable, Codable, Hashable, Sendable {
     public let quality: String
     public let remoteURL: URL
     public let cookie: String?
+    /// What the URL points at. A manifest is not a file; the engine must route
+    /// HLS and DASH to a container downloader rather than renaming a playlist.
+    public let container: MediaContainer
+    /// 1 is the legacy chunked-file layout; 2 is the planned container layout.
+    /// Older documents default to 1 so a playlist saved by a previous build can
+    /// be repaired once without demoting a real container download later.
+    public var layoutVersion: Int
+    /// Identifies one background transfer generation. A pause keeps it so the
+    /// daemon's staged chunks stay valid; a cancel rotates it so late events
+    /// from the old generation are ignored.
+    public var transferEpoch: UUID?
     public var status: DownloadStatus
     public var totalBytes: Int64
     public var bytesWritten: Int64
@@ -56,6 +67,12 @@ public struct DownloadItem: Identifiable, Codable, Hashable, Sendable {
     /// Final file name, no directory. Set by the caller so the extension can
     /// match the container (`.mp4` today).
     public var localFileName: String
+    /// Caption tracks saved beside the file when it finished.
+    ///
+    /// Filled after the media lands, so an episode plays with its subtitles and
+    /// no connection. Empty is the normal state for a title that has none, and
+    /// the reason the field decodes tolerantly.
+    public var subtitles: [DownloadedSubtitle]
 
     public init(
         id: String,
@@ -68,6 +85,9 @@ public struct DownloadItem: Identifiable, Codable, Hashable, Sendable {
         quality: String,
         remoteURL: URL,
         cookie: String? = nil,
+        container: MediaContainer = .mp4,
+        layoutVersion: Int = 2,
+        transferEpoch: UUID? = nil,
         status: DownloadStatus = .queued,
         totalBytes: Int64 = 0,
         bytesWritten: Int64 = 0,
@@ -75,7 +95,8 @@ public struct DownloadItem: Identifiable, Codable, Hashable, Sendable {
         failure: String? = nil,
         createdAt: Date = Date(),
         updatedAt: Date = Date(),
-        localFileName: String
+        localFileName: String,
+        subtitles: [DownloadedSubtitle] = []
     ) {
         self.id = id
         self.subjectID = subjectID
@@ -87,6 +108,9 @@ public struct DownloadItem: Identifiable, Codable, Hashable, Sendable {
         self.quality = quality
         self.remoteURL = remoteURL
         self.cookie = cookie
+        self.container = container
+        self.layoutVersion = layoutVersion
+        self.transferEpoch = transferEpoch
         self.status = status
         self.totalBytes = totalBytes
         self.bytesWritten = bytesWritten
@@ -95,12 +119,13 @@ public struct DownloadItem: Identifiable, Codable, Hashable, Sendable {
         self.createdAt = createdAt
         self.updatedAt = updatedAt
         self.localFileName = localFileName
+        self.subtitles = subtitles
     }
 
     private enum CodingKeys: String, CodingKey {
         case id, subjectID, title, poster, season, episode, episodeTitle, quality,
-             remoteURL, cookie, status, totalBytes, bytesWritten, attempts, failure,
-             createdAt, updatedAt, localFileName
+             remoteURL, cookie, container, layoutVersion, transferEpoch, status, totalBytes,
+             bytesWritten, attempts, failure, createdAt, updatedAt, localFileName, subtitles
     }
 
     /// Tolerant decoding, for the reason ``LibrarySettings/init(from:)`` gives:
@@ -119,6 +144,10 @@ public struct DownloadItem: Identifiable, Codable, Hashable, Sendable {
         quality = try container.decodeIfPresent(String.self, forKey: .quality) ?? ""
         remoteURL = try container.decode(URL.self, forKey: .remoteURL)
         cookie = try container.decodeIfPresent(String.self, forKey: .cookie)
+        self.container = try container.decodeIfPresent(MediaContainer.self, forKey: .container)
+            ?? MediaContainer.classify(url: remoteURL)
+        layoutVersion = try container.decodeIfPresent(Int.self, forKey: .layoutVersion) ?? 1
+        transferEpoch = try container.decodeIfPresent(UUID.self, forKey: .transferEpoch)
         status = try container.decodeIfPresent(DownloadStatus.self, forKey: .status) ?? .queued
         totalBytes = try container.decodeIfPresent(Int64.self, forKey: .totalBytes) ?? 0
         bytesWritten = try container.decodeIfPresent(Int64.self, forKey: .bytesWritten) ?? 0
@@ -127,14 +156,20 @@ public struct DownloadItem: Identifiable, Codable, Hashable, Sendable {
         createdAt = try container.decodeIfPresent(Date.self, forKey: .createdAt) ?? Date()
         updatedAt = try container.decodeIfPresent(Date.self, forKey: .updatedAt) ?? createdAt
         localFileName = try container.decodeIfPresent(String.self, forKey: .localFileName)
-            ?? DownloadItem.defaultLocalFileName(for: id)
+            ?? DownloadItem.defaultLocalFileName(for: id, container: self.container)
+        subtitles = try container.decodeIfPresent([DownloadedSubtitle].self, forKey: .subtitles) ?? []
     }
 
     /// The name a download falls back to when the document predates
-    /// `localFileName`. Progressive MP4 is the only container the gateway
-    /// serves, so `.mp4` is the only honest guess.
+    /// `localFileName`. Progressive MP4 is the only container the legacy
+    /// downloader could finish, so `.mp4` remains the safe default for a row
+    /// written by an older build.
     static func defaultLocalFileName(for id: String) -> String {
-        "\(sanitise(id)).mp4"
+        defaultLocalFileName(for: id, container: .mp4)
+    }
+
+    static func defaultLocalFileName(for id: String, container: MediaContainer) -> String {
+        "\(sanitise(id)).\(container.assetExtension)"
     }
 
     /// Provider ids contain `-` and `.` but never a path separator; stripping
@@ -152,6 +187,10 @@ public struct DownloadItem: Identifiable, Codable, Hashable, Sendable {
     }
 
     public var isFinished: Bool { status == .completed }
+
+    /// A manifest describes other files; it is never a playable offline asset
+    /// on its own.
+    public var isManifestDownload: Bool { container.isManifest }
 
     public var isActive: Bool { status == .downloading }
 
@@ -392,7 +431,13 @@ public actor DownloadEngine {
     private let directory: URL
     private let transport: any DownloadTransport
     private let configuration: DownloadConfiguration
+    private let transfer: (any BackgroundTransferring)?
+    private let backgroundConfiguration: BackgroundTransferConfiguration
     private let fileManager = FileManager.default
+    /// Resolves the caption tracks a finished item should keep. Injected by the
+    /// app because it needs the catalog repository, which the queue has no
+    /// business knowing about.
+    private var captionProvider: (@Sendable (DownloadItem) async -> [DownloadedSubtitle])?
 
     private var queue: [DownloadItem] = []
     private var isLoaded = false
@@ -405,15 +450,32 @@ public actor DownloadEngine {
     /// Runtime hint only, never persisted: a server that cannot resume would
     /// otherwise be re-probed — and re-downloaded from zero — on every attempt.
     private var rangeSupport: [String: Bool] = [:]
+    /// Items a relaunch demoted from `.downloading`. They are the only paused
+    /// rows whose still-running daemon tasks should be reattached.
+    private var interrupted: Set<String> = []
+    private var transferPump: Task<Void, Never>?
+    private var transferWaiters: [String: AsyncStream<TransferEvent>.Continuation] = [:]
+    private var transferWaiterTokens: [String: UUID] = [:]
+    private var didReconcile = false
+    /// Last launch reconciliation, so the app can log a concrete outcome.
+    public private(set) var reconcileReport = ReconcileReport()
 
     public init(
         directory: URL,
         transport: any DownloadTransport,
-        configuration: DownloadConfiguration = .init()
+        configuration: DownloadConfiguration = .init(),
+        transfer: (any BackgroundTransferring)? = nil,
+        backgroundConfiguration: BackgroundTransferConfiguration = .init()
     ) {
         self.directory = directory
         self.transport = transport
         self.configuration = configuration
+        self.transfer = transfer
+        self.backgroundConfiguration = backgroundConfiguration
+    }
+
+    private var stagingRoot: URL {
+        directory.appendingPathComponent(".staging", isDirectory: true)
     }
 
     private var documentURL: URL { directory.appendingPathComponent("downloads.json") }
@@ -455,6 +517,15 @@ public actor DownloadEngine {
         directory.appendingPathComponent(item.localFileName)
     }
 
+    /// The caption tracks this download carries, as pickable tracks.
+    ///
+    /// Answerable without the actor: the paths are a pure function of the item
+    /// and the directory, and the player asks on the main actor while it builds
+    /// the payload it is about to play.
+    public nonisolated func subtitleTracks(for item: DownloadItem) -> [SubtitleTrack] {
+        item.subtitles.map { $0.track(in: directory) }
+    }
+
     /// `"<name>.part"`. A `.part` file is never valid to hand a player.
     public nonisolated func partialURL(for item: DownloadItem) -> URL {
         directory.appendingPathComponent(item.localFileName + ".part")
@@ -462,10 +533,14 @@ public actor DownloadEngine {
 
     public func bytesOnDisk() async -> Int64 {
         ensureLoaded()
-        return queue.reduce(into: Int64(0)) { total, item in
+        var total = queue.reduce(into: Int64(0)) { total, item in
             total += fileSize(fileURL(for: item))
             total += fileSize(partialURL(for: item))
         }
+        // Staged chunks are real bytes on disk until the contiguous prefix
+        // absorbs them, so omitting them would under-report storage pressure.
+        total += fileSize(stagingRoot)
+        return total
     }
 
     // MARK: - Mutation
@@ -493,6 +568,8 @@ public actor DownloadEngine {
     public func start() async {
         ensureLoaded()
         isRunning = true
+        ensureTransferPump()
+        await reconcileOnce()
         schedule()
     }
 
@@ -501,25 +578,33 @@ public actor DownloadEngine {
         guard let index = queue.firstIndex(where: { $0.id == id }) else { return }
         guard queue[index].status == .downloading || queue[index].status == .queued else { return }
         stopTask(id)
+        interrupted.remove(id)
         queue[index].status = .paused
         queue[index].updatedAt = Date()
         persist()
         emit()
+        if let transfer { await transfer.pause(itemID: id) }
     }
 
     public func pauseAll() async {
         ensureLoaded()
         var changed = false
+        var paused: [String] = []
         for index in queue.indices
         where queue[index].status == .downloading || queue[index].status == .queued {
             stopTask(queue[index].id)
+            interrupted.remove(queue[index].id)
             queue[index].status = .paused
             queue[index].updatedAt = Date()
+            paused.append(queue[index].id)
             changed = true
         }
         guard changed else { return }
         persist()
         emit()
+        if let transfer {
+            for id in paused { await transfer.pause(itemID: id) }
+        }
     }
 
     /// Queues a paused, failed or waiting item and lets the scheduler pick it
@@ -528,6 +613,7 @@ public actor DownloadEngine {
         ensureLoaded()
         guard let index = queue.firstIndex(where: { $0.id == id }) else { return }
         guard queue[index].canResume else { return }
+        interrupted.remove(id)
         queue[index].status = .queued
         queue[index].failure = nil
         queue[index].updatedAt = Date()
@@ -541,6 +627,7 @@ public actor DownloadEngine {
         ensureLoaded()
         var changed = false
         for index in queue.indices where queue[index].canResume {
+            interrupted.remove(queue[index].id)
             queue[index].status = .queued
             queue[index].failure = nil
             queue[index].updatedAt = Date()
@@ -559,6 +646,7 @@ public actor DownloadEngine {
         ensureLoaded()
         guard let index = queue.firstIndex(where: { $0.id == id }) else { return }
         guard queue[index].status != .completed, queue[index].status != .downloading else { return }
+        interrupted.remove(id)
         queue[index].attempts = 0
         queue[index].failure = nil
         queue[index].status = .queued
@@ -576,26 +664,51 @@ public actor DownloadEngine {
         guard let index = queue.firstIndex(where: { $0.id == id }) else { return }
         guard queue[index].status != .completed else { return }
         stopTask(id)
+        interrupted.remove(id)
         try? fileManager.removeItem(at: partialURL(for: queue[index]))
         rangeSupport[id] = nil
+        // A fresh epoch makes every event still in flight from the old
+        // generation unrecognisable, so a late chunk cannot land in a new run.
+        queue[index].transferEpoch = UUID()
         queue[index].status = .paused
         queue[index].bytesWritten = 0
         queue[index].failure = nil
         queue[index].updatedAt = Date()
         persist()
         emit()
+        if let transfer { await transfer.cancel(itemID: id) }
+        try? fileManager.removeItem(
+            at: TransferStaging.itemRoot(root: stagingRoot, itemID: id)
+        )
+    }
+
+    /// Supplies the caption tracks a finished download should keep.
+    ///
+    /// Captions live on a different endpoint and are best effort: the lookup
+    /// runs once the media is already saved, so a host that is down costs the
+    /// subtitles and never the episode.
+    public func setCaptionProvider(
+        _ provider: (@Sendable (DownloadItem) async -> [DownloadedSubtitle])?
+    ) {
+        captionProvider = provider
     }
 
     public func remove(_ id: String) async {
         ensureLoaded()
         guard let index = queue.firstIndex(where: { $0.id == id }) else { return }
         stopTask(id)
+        interrupted.remove(id)
         let item = queue.remove(at: index)
         try? fileManager.removeItem(at: partialURL(for: item))
         try? fileManager.removeItem(at: fileURL(for: item))
+        removeSubtitleFiles(for: item)
         rangeSupport[id] = nil
         persist()
         emit()
+        if let transfer { await transfer.cancel(itemID: id) }
+        try? fileManager.removeItem(
+            at: TransferStaging.itemRoot(root: stagingRoot, itemID: id)
+        )
     }
 
     public func removeCompleted() async {
@@ -604,6 +717,10 @@ public actor DownloadEngine {
         guard !finished.isEmpty else { return }
         for item in finished {
             try? fileManager.removeItem(at: fileURL(for: item))
+            removeSubtitleFiles(for: item)
+            try? fileManager.removeItem(
+                at: TransferStaging.itemRoot(root: stagingRoot, itemID: item.id)
+            )
             rangeSupport[item.id] = nil
         }
         queue.removeAll { $0.status == .completed }
@@ -613,15 +730,22 @@ public actor DownloadEngine {
 
     public func removeAll() async {
         ensureLoaded()
-        for item in queue {
+        let removed = queue
+        for item in removed {
             stopTask(item.id)
             try? fileManager.removeItem(at: partialURL(for: item))
             try? fileManager.removeItem(at: fileURL(for: item))
+            removeSubtitleFiles(for: item)
         }
         rangeSupport.removeAll()
+        interrupted.removeAll()
         queue.removeAll()
         persist()
         emit()
+        if let transfer {
+            for item in removed { await transfer.cancel(itemID: item.id) }
+        }
+        try? fileManager.removeItem(at: stagingRoot)
     }
 
     // MARK: - Scheduling
@@ -658,6 +782,9 @@ public actor DownloadEngine {
         // The slot is released by the runner's own defer, so the engine never
         // has to guess when the item stopped touching the disk.
         tasks[id]?.cancel()
+        // Ending the waiter wakes a runner that is parked on an event that will
+        // never arrive after the daemon task was cancelled.
+        finishWaiter(id)
     }
 
     private func taskFinished(_ id: String) {
@@ -672,7 +799,17 @@ public actor DownloadEngine {
             guard let current = queue.first(where: { $0.id == id }), current.status == .downloading
             else { return }
             do {
-                try await attempt(id)
+                let classified = MediaContainer.classify(url: current.remoteURL)
+                let container = classified == .unknown ? current.container : classified
+                if transfer != nil, container.isDirectDownload {
+                    try await attemptBackground(id)
+                } else {
+                    try await attempt(id)
+                }
+                // A completed item must not leave daemon tasks or staged chunks
+                // behind, especially when a whole-file 200 made the rest of the
+                // planned ranges redundant.
+                if let transfer { await transfer.cancel(itemID: id) }
                 complete(id)
                 return
             } catch let failure as AttemptFailure {
@@ -680,7 +817,18 @@ public actor DownloadEngine {
                     persist()
                     return
                 }
-                guard recover(failure, id: id) else { return }
+                if case .rangeIgnored = failure, let transfer {
+                    // Every ranged task in this generation asked for bytes the
+                    // server is about to resend as one body; cancel them before
+                    // the retry so they cannot race the fresh prefix.
+                    await transfer.cancel(itemID: id)
+                }
+                guard recover(failure, id: id) else {
+                    // A terminal failure stops the wire but keeps the staged
+                    // chunks and .part for a later retry.
+                    if let transfer { await transfer.pause(itemID: id) }
+                    return
+                }
                 // A restart after an ignored range spends no attempt, so it also
                 // waits no backoff.
                 let spent = queue.first(where: { $0.id == id })?.attempts ?? 0
@@ -690,7 +838,8 @@ public actor DownloadEngine {
                 persist()
                 return
             } catch {
-                fail(id, with: .upstream(String(describing: error)))
+                fail(id, with: .transport(error))
+                if let transfer { await transfer.pause(itemID: id) }
                 return
             }
         }
@@ -703,6 +852,18 @@ public actor DownloadEngine {
             throw AttemptFailure.transport(.cancelled)
         }
         let remoteURL = queue[index].remoteURL
+        let classified = MediaContainer.classify(url: remoteURL)
+        let container = classified == .unknown ? queue[index].container : classified
+        // A manifest is a recipe, not a file. Until the container downloader
+        // owns this item, failing before the first byte is the only outcome
+        // that cannot leave an unplayable playlist marked completed.
+        guard container.isDirectDownload else {
+            throw AttemptFailure.transport(.http(
+                status: 415,
+                code: "unsupported_container",
+                message: "The \(container.displayName) downloader is not enabled in this build."
+            ))
+        }
         let headers = MediaRequest.headers(cookie: queue[index].cookie)
         let partial = partialURL(for: queue[index])
         let destination = fileURL(for: queue[index])
@@ -789,7 +950,7 @@ public actor DownloadEngine {
             persist()
             throw CancellationError()
         } catch {
-            throw AttemptFailure.transport(.upstream(String(describing: error)))
+            throw AttemptFailure.transport(.transport(error))
         }
 
         if Task.isCancelled {
@@ -822,6 +983,602 @@ public actor DownloadEngine {
         if queue[current].totalBytes <= 0 { queue[current].totalBytes = offset }
     }
 
+    // MARK: - Background transfer
+
+    private func ensureTransferPump() {
+        guard transfer != nil, transferPump == nil else { return }
+        guard let transfer else { return }
+        // Detached so the pump is not tied to whichever actor-isolated call
+        // started it, and weak so the stream cannot keep the engine alive.
+        transferPump = Task.detached { [weak self] in
+            for await event in transfer.events() {
+                guard let self else { return }
+                await self.route(event)
+            }
+        }
+    }
+
+    private func route(_ event: TransferEvent) {
+        switch event {
+        case .sessionDisconnected, .sessionReconnected:
+            // The daemon dropping its connection is not an item failure: the
+            // per-item waiter and the staged files remain authoritative.
+            return
+        case .progress(let key, _, _), .finished(let key, _, _), .failed(let key, _, _):
+            transferWaiters[key.itemID]?.yield(event)
+        }
+    }
+
+    private func finishWaiter(_ id: String) {
+        transferWaiters.removeValue(forKey: id)?.finish()
+        transferWaiterTokens[id] = nil
+    }
+
+    private func reconcileOnce() async {
+        guard let transfer, !didReconcile else { return }
+        didReconcile = true
+        let snapshots = await transfer.snapshot()
+        let decisions = TransferReconciler().reconcile(
+            queue: queue,
+            snapshots: snapshots,
+            reattachable: interrupted
+        )
+        var report = ReconcileReport()
+        var changed = false
+
+        for decision in decisions {
+            switch decision.action {
+            case .reattach:
+                // `interrupted` is the authority, not the status in the
+                // snapshot: a user pause during the await must win.
+                guard let id = decision.itemID,
+                      interrupted.contains(id),
+                      let index = queue.firstIndex(where: { $0.id == id }),
+                      queue[index].status != .completed
+                else { continue }
+                queue[index].status = .queued
+                queue[index].failure = nil
+                queue[index].updatedAt = Date()
+                interrupted.remove(id)
+                report.reattached += 1
+                changed = true
+
+            case .pause:
+                guard let id = decision.itemID,
+                      let index = queue.firstIndex(where: { $0.id == id })
+                else { continue }
+                if queue[index].status == .downloading {
+                    queue[index].status = .paused
+                    queue[index].updatedAt = Date()
+                    changed = true
+                }
+                interrupted.remove(id)
+                report.paused += 1
+
+            case .cancelOrphan:
+                guard let taskIdentifier = decision.taskIdentifier else { continue }
+                await transfer.cancel(taskIdentifier: taskIdentifier)
+                report.canceledOrphans += 1
+            }
+        }
+
+        // A demoted row whose daemon task is gone is already paused; it only
+        // needs to stop pretending it can be reattached.
+        let snapshotted = Set(snapshots.compactMap { $0.key?.itemID })
+        for id in Array(interrupted) where !snapshotted.contains(id) {
+            interrupted.remove(id)
+            report.paused += 1
+        }
+
+        reconcileReport = report
+        if changed {
+            persist()
+            emit()
+        }
+    }
+
+    private func downloadingIndex(_ id: String) -> Int? {
+        guard let index = queue.firstIndex(where: { $0.id == id }),
+              queue[index].status == .downloading
+        else { return nil }
+        return index
+    }
+
+    /// Deterministic chunks. Absolute indices make a relaunch with the same
+    /// committed prefix land on the same staging filenames, so a body the
+    /// daemon finished before the process died is not paid for twice.
+    private func transferChunks(
+        from offset: Int64,
+        total: Int64,
+        chunkBytes: Int64,
+        supportsRanges: Bool
+    ) -> [TransferChunk] {
+        guard offset < total, chunkBytes > 0 else { return [] }
+        // A server that ignores Range can still deliver the whole body in one
+        // daemon task; asking for more than one chunk would only repeat it.
+        if !supportsRanges {
+            return [TransferChunk(index: 0, range: ByteRange(start: 0, end: total - 1))]
+        }
+        let first = Int(offset / chunkBytes)
+        let last = Int((total - 1) / chunkBytes)
+        guard first <= last else { return [] }
+        return (first...last).map { index in
+            let start = max(offset, Int64(index) * chunkBytes)
+            let end = min(total, Int64(index + 1) * chunkBytes) - 1
+            return TransferChunk(index: index, range: ByteRange(start: start, end: end))
+        }
+    }
+
+    private func backgroundRequest(
+        id: String,
+        epoch: UUID,
+        chunk: TransferChunk,
+        url: URL,
+        headers: [String: String]
+    ) -> TransferRequest {
+        TransferRequest(
+            key: TransferTaskKey(itemID: id, epoch: epoch, index: chunk.index),
+            url: url,
+            range: chunk.range,
+            headers: headers,
+            expectedBytes: chunk.range.length,
+            stagingURL: TransferStaging.fileURL(
+                root: stagingRoot,
+                itemID: id,
+                epoch: epoch,
+                index: chunk.index
+            )
+        )
+    }
+
+    /// Appends every staged chunk that starts at `offset`, verifying each body
+    /// against the range it was requested for before it becomes committed.
+    @discardableResult
+    private func drainBackgroundChunks(
+        id: String,
+        epoch: UUID,
+        total: Int64,
+        chunkBytes: Int64,
+        supportsRanges: Bool,
+        partial: URL,
+        offset: inout Int64,
+        staged: inout [Int: Int64]
+    ) throws -> Int64 {
+        let plans = Dictionary(uniqueKeysWithValues: transferChunks(
+            from: offset,
+            total: total,
+            chunkBytes: chunkBytes,
+            supportsRanges: supportsRanges
+        ).map { ($0.index, $0) })
+        var drained: Int64 = 0
+        while offset < total {
+            let index = Int(offset / chunkBytes)
+            guard let plan = plans[index] else { break }
+            let start = max(offset, plan.range.start)
+            let expected = plan.range.end - start + 1
+            let staging = TransferStaging.fileURL(
+                root: stagingRoot,
+                itemID: id,
+                epoch: epoch,
+                index: index
+            )
+            let size = fileSize(staging)
+            guard size > 0 else { break }
+            guard size == expected else {
+                // A body for a different prefix cannot be committed at this
+                // offset; discard it and let the scheduler ask again.
+                try? fileManager.removeItem(at: staging)
+                staged[index] = nil
+                break
+            }
+            try appendContents(of: staging, to: partial)
+            try? fileManager.removeItem(at: staging)
+            staged[index] = nil
+            offset += expected
+            drained += expected
+        }
+        return drained
+    }
+
+    private func appendContents(of source: URL, to destination: URL) throws {
+        let input = try FileHandle(forReadingFrom: source)
+        defer { try? input.close() }
+        let output = try FileHandle(forWritingTo: destination)
+        defer { try? output.close() }
+        try output.seekToEnd()
+        while let data = try input.read(upToCount: 1 << 20), !data.isEmpty {
+            try output.write(contentsOf: data)
+        }
+    }
+
+    private func backgroundReported(
+        offset: Int64,
+        total: Int64,
+        staged: [Int: Int64],
+        inFlight: [Int: Int64],
+        plans: [Int: TransferChunk]
+    ) -> Int64 {
+        var reported = offset
+        for (index, size) in staged {
+            guard let plan = plans[index] else { continue }
+            reported += min(max(size, 0), plan.range.length)
+        }
+        for (index, received) in inFlight {
+            guard let plan = plans[index] else { continue }
+            reported += min(max(received, 0), plan.range.length)
+        }
+        return min(max(reported, offset), total)
+    }
+
+    private func flushBackgroundProgress(
+        id: String,
+        total: Int64,
+        reported: Int64,
+        lastReported: inout Int64
+    ) {
+        let flushBytes = max(1, configuration.progressFlushBytes)
+        let clamped = min(total, max(reported, 0))
+        guard clamped >= total || clamped - lastReported >= flushBytes else { return }
+        guard let index = downloadingIndex(id) else { return }
+        queue[index].bytesWritten = max(queue[index].bytesWritten, clamped)
+        queue[index].updatedAt = Date()
+        lastReported = clamped
+        persist()
+        emit()
+    }
+
+    /// One attempt through the background daemon. `.part` stays the contiguous
+    /// committed prefix; out-of-order daemon bodies wait in the staging epoch
+    /// until every gap before them has arrived.
+    private func attemptBackground(_ id: String) async throws {
+        guard let transfer else { return try await attempt(id) }
+        ensureTransferPump()
+
+        guard let index = queue.firstIndex(where: { $0.id == id }) else {
+            throw AttemptFailure.transport(.cancelled)
+        }
+        let remoteURL = queue[index].remoteURL
+        let classified = MediaContainer.classify(url: remoteURL)
+        let container = classified == .unknown ? queue[index].container : classified
+        guard container.isDirectDownload else {
+            throw AttemptFailure.transport(.http(
+                status: 415,
+                code: "unsupported_container",
+                message: "The \(container.displayName) downloader is not enabled in this build."
+            ))
+        }
+        let headers = MediaRequest.headers(cookie: queue[index].cookie)
+        let partial = partialURL(for: queue[index])
+        let destination = fileURL(for: queue[index])
+
+        try? fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+        if !fileManager.fileExists(atPath: partial.path) {
+            guard fileManager.createFile(atPath: partial.path, contents: nil) else {
+                throw AttemptFailure.transport(.upstream("Could not create the download file."))
+            }
+        }
+
+        // Registered before the first suspension: a daemon task that finishes
+        // while the probe or enqueue is in flight must still reach this attempt.
+        let waiterToken = UUID()
+        let (events, continuation) = AsyncStream.makeStream(of: TransferEvent.self)
+        finishWaiter(id)
+        transferWaiters[id] = continuation
+        transferWaiterTokens[id] = waiterToken
+        defer {
+            if transferWaiterTokens[id] == waiterToken {
+                transferWaiters[id] = nil
+                transferWaiterTokens[id] = nil
+            }
+            continuation.finish()
+        }
+
+        var offset = fileSize(partial)
+        queue[index].bytesWritten = offset
+
+        if rangeSupport[id] == nil, offset > 0 || queue[index].totalBytes <= 0 {
+            let info: RemoteFileInfo
+            do {
+                info = try await transport.probe(url: remoteURL, headers: headers)
+            } catch {
+                if Task.isCancelled { throw CancellationError() }
+                throw attempted(error, from: offset)
+            }
+            if Task.isCancelled { throw CancellationError() }
+            guard let current = downloadingIndex(id) else { throw CancellationError() }
+            rangeSupport[id] = info.supportsRanges
+            if info.totalBytes > 0 { queue[current].totalBytes = info.totalBytes }
+            persist()
+        }
+
+        if offset > 0, rangeSupport[id] == false {
+            guard let current = downloadingIndex(id) else { throw CancellationError() }
+            try restart(partial)
+            offset = 0
+            queue[current].bytesWritten = 0
+            persist()
+        }
+
+        guard let current = downloadingIndex(id) else { throw CancellationError() }
+        let total = queue[current].totalBytes
+        guard total > 0 else { return try await attempt(id) }
+        let chunkBytes = backgroundConfiguration.chunkBytes
+        let supportsRanges = rangeSupport[id] ?? true
+
+        // Snapshot once, then reuse it: an adopted epoch keeps the daemon's
+        // existing chunks reachable, while a fresh one is the normal case.
+        let snapshots = await transfer.snapshot()
+        if Task.isCancelled { throw CancellationError() }
+        guard let epochIndex = downloadingIndex(id) else { throw CancellationError() }
+        let activeKeys = snapshots.compactMap(\.key).filter { $0.itemID == id }
+        let epoch: UUID
+        if let existing = queue[epochIndex].transferEpoch {
+            epoch = existing
+        } else if let adopted = activeKeys.first?.epoch {
+            epoch = adopted
+            queue[epochIndex].transferEpoch = adopted
+            persist()
+        } else {
+            let created = UUID()
+            epoch = created
+            queue[epochIndex].transferEpoch = created
+            persist()
+        }
+        var activeIndices = Set(activeKeys.filter { $0.epoch == epoch }.map(\.index))
+
+        var plans = transferChunks(
+            from: offset,
+            total: total,
+            chunkBytes: chunkBytes,
+            supportsRanges: supportsRanges
+        )
+        var plansByIndex = Dictionary(uniqueKeysWithValues: plans.map { ($0.index, $0) })
+        var staged: [Int: Int64] = [:]
+        for plan in plans {
+            let staging = TransferStaging.fileURL(
+                root: stagingRoot,
+                itemID: id,
+                epoch: epoch,
+                index: plan.index
+            )
+            let size = fileSize(staging)
+            if size == plan.range.length {
+                staged[plan.index] = size
+            } else if size > 0 {
+                try? fileManager.removeItem(at: staging)
+            }
+        }
+
+        var lastReported = offset
+        try drainBackgroundChunks(
+            id: id,
+            epoch: epoch,
+            total: total,
+            chunkBytes: chunkBytes,
+            supportsRanges: supportsRanges,
+            partial: partial,
+            offset: &offset,
+            staged: &staged
+        )
+        plans = transferChunks(
+            from: offset,
+            total: total,
+            chunkBytes: chunkBytes,
+            supportsRanges: supportsRanges
+        )
+        plansByIndex = Dictionary(uniqueKeysWithValues: plans.map { ($0.index, $0) })
+        activeIndices = activeIndices.filter { plansByIndex[$0] != nil }
+        var pending = plans
+            .filter { !activeIndices.contains($0.index) && staged[$0.index] == nil }
+            .sorted { $0.index < $1.index }
+            .map(\.index)
+
+        if let current = downloadingIndex(id) {
+            queue[current].bytesWritten = max(queue[current].bytesWritten, offset)
+        }
+        flushBackgroundProgress(
+            id: id,
+            total: total,
+            reported: backgroundReported(
+                offset: offset, total: total, staged: staged,
+                inFlight: [:], plans: plansByIndex
+            ),
+            lastReported: &lastReported
+        )
+
+        let limit = max(1, backgroundConfiguration.maxInflight)
+        var requests: [TransferRequest] = []
+        while activeIndices.count < limit, !pending.isEmpty {
+            let index = pending.removeFirst()
+            guard let plan = plansByIndex[index] else { continue }
+            activeIndices.insert(index)
+            requests.append(backgroundRequest(
+                id: id, epoch: epoch, chunk: plan, url: remoteURL, headers: headers
+            ))
+        }
+        if !requests.isEmpty {
+            do {
+                try await transfer.enqueue(requests)
+            } catch {
+                if Task.isCancelled { throw CancellationError() }
+                throw attempted(error, from: offset)
+            }
+            if Task.isCancelled { throw CancellationError() }
+            guard downloadingIndex(id) != nil else { throw CancellationError() }
+        }
+        guard offset >= total || !pending.isEmpty || !activeIndices.isEmpty || !staged.isEmpty else {
+            throw AttemptFailure.transport(
+                .upstream("No background chunks could be scheduled.")
+            )
+        }
+
+        var inFlight: [Int: Int64] = [:]
+        var failure: AttemptFailure?
+        var iterator = events.makeAsyncIterator()
+        events: while offset < total {
+            guard let event = await iterator.next() else { break events }
+            if Task.isCancelled { throw CancellationError() }
+            switch event {
+            case .sessionDisconnected, .sessionReconnected:
+                continue
+
+            case .progress(let key, let received, _):
+                guard key.itemID == id, key.epoch == epoch,
+                      let plan = plansByIndex[key.index], plan.range.end >= offset
+                else { continue }
+                inFlight[key.index] = min(
+                    plan.range.length,
+                    max(inFlight[key.index] ?? 0, received)
+                )
+                flushBackgroundProgress(
+                    id: id,
+                    total: total,
+                    reported: backgroundReported(
+                        offset: offset, total: total, staged: staged,
+                        inFlight: inFlight, plans: plansByIndex
+                    ),
+                    lastReported: &lastReported
+                )
+
+            case .finished(let key, let stagingURL, let response):
+                guard key.itemID == id, key.epoch == epoch,
+                      let plan = plansByIndex[key.index]
+                else { continue }
+                activeIndices.remove(key.index)
+                inFlight[key.index] = nil
+                if plan.range.end < offset { continue }
+
+                let size = fileSize(stagingURL)
+                let status = response?.status ?? 206
+                if !(200..<300).contains(status) {
+                    failure = attempted(
+                        .http(status: status, code: nil, message: nil),
+                        from: plan.range.start
+                    )
+                    break events
+                }
+                if status == 200, plan.range.start > 0 {
+                    failure = .rangeIgnored
+                    break events
+                }
+                if status == 200, plan.range.start == 0, offset == 0, size == total {
+                    // A `200` is the whole file, not this chunk: accept it once
+                    // instead of paying for every remaining range.
+                    do {
+                        try appendContents(of: stagingURL, to: partial)
+                    } catch {
+                        failure = .transport(.upstream("Could not write the download file."))
+                        break events
+                    }
+                    try? fileManager.removeItem(at: stagingURL)
+                    staged[plan.index] = nil
+                    offset = total
+                    if let current = downloadingIndex(id) {
+                        queue[current].bytesWritten = total
+                    }
+                    persist()
+                    emit()
+                    break events
+                }
+                guard size == plan.range.length else {
+                    // A short body is a cut connection, not a finished chunk.
+                    failure = .transport(.upstream("The server sent an incomplete chunk."))
+                    break events
+                }
+                if let contentRange = response?.contentRange,
+                   contentRange.start != plan.range.start {
+                    failure = .transport(.upstream("The server sent the wrong byte range."))
+                    break events
+                }
+                staged[plan.index] = size
+
+                do {
+                    try drainBackgroundChunks(
+                        id: id,
+                        epoch: epoch,
+                        total: total,
+                        chunkBytes: chunkBytes,
+                        supportsRanges: supportsRanges,
+                        partial: partial,
+                        offset: &offset,
+                        staged: &staged
+                    )
+                } catch {
+                    failure = .transport(.upstream("Could not write the download file."))
+                    break events
+                }
+                guard downloadingIndex(id) != nil else { throw CancellationError() }
+
+                if let current = downloadingIndex(id) {
+                    queue[current].bytesWritten = max(queue[current].bytesWritten, offset)
+                }
+                flushBackgroundProgress(
+                    id: id,
+                    total: total,
+                    reported: backgroundReported(
+                        offset: offset, total: total, staged: staged,
+                        inFlight: inFlight, plans: plansByIndex
+                    ),
+                    lastReported: &lastReported
+                )
+                if offset >= total { break events }
+
+                var more: [TransferRequest] = []
+                while activeIndices.count < limit, !pending.isEmpty {
+                    let index = pending.removeFirst()
+                    guard let next = plansByIndex[index], next.range.end >= offset else { continue }
+                    activeIndices.insert(index)
+                    more.append(backgroundRequest(
+                        id: id, epoch: epoch, chunk: next, url: remoteURL, headers: headers
+                    ))
+                }
+                if !more.isEmpty {
+                    do {
+                        try await transfer.enqueue(more)
+                    } catch {
+                        if Task.isCancelled { throw CancellationError() }
+                        failure = attempted(error, from: offset)
+                        break events
+                    }
+                }
+
+            case .failed(let key, let error, _):
+                guard key.itemID == id, key.epoch == epoch else { continue }
+                activeIndices.remove(key.index)
+                inFlight[key.index] = nil
+                if case .cancelled = error, Task.isCancelled { throw CancellationError() }
+                failure = attempted(
+                    error,
+                    from: plansByIndex[key.index]?.range.start ?? offset
+                )
+                break events
+            }
+        }
+
+        if Task.isCancelled { throw CancellationError() }
+        if let failure { throw failure }
+        guard offset >= total else {
+            throw AttemptFailure.transport(
+                .upstream("The background transfer stopped before it finished.")
+            )
+        }
+        guard let finishedIndex = downloadingIndex(id) else { throw CancellationError() }
+        do {
+            if fileManager.fileExists(atPath: destination.path) {
+                try fileManager.removeItem(at: destination)
+            }
+            try fileManager.moveItem(at: partial, to: destination)
+        } catch {
+            throw AttemptFailure.transport(.upstream("Could not finish the download file."))
+        }
+        let finalSize = fileSize(destination)
+        queue[finishedIndex].bytesWritten = finalSize
+        if queue[finishedIndex].totalBytes <= 0 { queue[finishedIndex].totalBytes = finalSize }
+        try? fileManager.removeItem(
+            at: TransferStaging.epochDirectory(root: stagingRoot, itemID: id, epoch: epoch)
+        )
+    }
+
     private func complete(_ id: String) {
         guard let index = queue.firstIndex(where: { $0.id == id }) else { return }
         queue[index].status = .completed
@@ -829,6 +1586,38 @@ public actor DownloadEngine {
         queue[index].updatedAt = Date()
         persist()
         emit()
+        scheduleSubtitles(for: queue[index])
+    }
+
+    /// Saves an item's captions once its media is on disk.
+    ///
+    /// Detached from `complete`, so a slow caption host cannot hold the queue
+    /// or delay the next item starting. The row is emitted again when the
+    /// tracks land, which is what makes them appear without reopening the app.
+    private func scheduleSubtitles(for item: DownloadItem) {
+        guard captionProvider != nil, item.subtitles.isEmpty else { return }
+        Task { [weak self] in await self?.attachSubtitles(to: item) }
+    }
+
+    private func attachSubtitles(to item: DownloadItem) async {
+        guard let captionProvider else { return }
+        let saved = await captionProvider(item)
+        guard !saved.isEmpty,
+              let index = queue.firstIndex(where: { $0.id == item.id }),
+              queue[index].status == .completed
+        else { return }
+        queue[index].subtitles = saved
+        queue[index].updatedAt = Date()
+        persist()
+        emit()
+    }
+
+    /// Captions belong to the episode they were fetched for; leaving them behind
+    /// would grow the downloads directory with files nothing references.
+    private func removeSubtitleFiles(for item: DownloadItem) {
+        for subtitle in item.subtitles {
+            try? fileManager.removeItem(at: directory.appendingPathComponent(subtitle.fileName))
+        }
     }
 
     private func fail(_ id: String, with error: CinemacoreError) {
@@ -912,11 +1701,29 @@ public actor DownloadEngine {
               let document = try? JSONDecoder.library.decode(DownloadDocument.self, from: data)
         else { return }
         queue = document.items
+        var recovered = false
+        // A pre-planned build treated the manifest itself as the finished file.
+        // That row can never play offline, so repair it once: drop the playlist
+        // bytes, keep the user's row, and let the container downloader resume it.
+        for index in queue.indices where queue[index].layoutVersion < 2 && queue[index].isManifestDownload {
+            try? fileManager.removeItem(at: fileURL(for: queue[index]))
+            try? fileManager.removeItem(at: partialURL(for: queue[index]))
+            // The repair is our decision, not a daemon interruption, so this
+            // row must never be reattached to a previous generation's task.
+            interrupted.remove(queue[index].id)
+            queue[index].layoutVersion = 2
+            queue[index].status = .paused
+            queue[index].bytesWritten = 0
+            queue[index].totalBytes = 0
+            queue[index].failure = "This download was a playlist, not a video. Resume it to download the title."
+            queue[index].updatedAt = Date()
+            recovered = true
+        }
         // A process that died cannot still be downloading; whatever was in flight
         // is only as complete as the bytes already on disk.
-        var recovered = false
         for index in queue.indices where queue[index].status == .downloading {
             queue[index].status = .paused
+            interrupted.insert(queue[index].id)
             recovered = true
         }
         if recovered { persist() }
@@ -939,10 +1746,25 @@ public actor DownloadEngine {
     }
 
     private func fileSize(_ url: URL) -> Int64 {
-        guard let attributes = try? fileManager.attributesOfItem(atPath: url.path),
-              let size = attributes[.size] as? NSNumber
-        else { return 0 }
-        return size.int64Value
+        guard let values = try? url.resourceValues(forKeys: [.isDirectoryKey, .fileSizeKey]) else {
+            return 0
+        }
+        if values.isDirectory == true {
+            guard let children = fileManager.enumerator(
+                at: url,
+                includingPropertiesForKeys: [.isRegularFileKey, .fileSizeKey],
+                options: [.skipsHiddenFiles]
+            ) else { return 0 }
+            var total: Int64 = 0
+            for case let child as URL in children {
+                guard let childValues = try? child.resourceValues(
+                    forKeys: [.isRegularFileKey, .fileSizeKey]
+                ), childValues.isRegularFile == true else { continue }
+                total += Int64(childValues.fileSize ?? 0)
+            }
+            return total
+        }
+        return Int64(values.fileSize ?? 0)
     }
 }
 
@@ -951,6 +1773,13 @@ private enum AttemptFailure: Error {
     case transport(CinemacoreError)
     /// The server sent the whole file in answer to a ranged request.
     case rangeIgnored
+}
+
+/// One deterministic background range. `index` is absolute, so the staging
+/// filename survives a relaunch at the same committed offset.
+private struct TransferChunk: Sendable {
+    let index: Int
+    let range: ByteRange
 }
 
 /// The on-disk queue. One file keeps the write path atomic.
@@ -1009,7 +1838,7 @@ public struct URLSessionDownloadTransport: DownloadTransport {
         head.timeoutInterval = Self.timeout
         head.allHTTPHeaderFields = headers
 
-        let (_, headResponse) = try await raw(head)
+        let (_, headResponse) = try await fetchRaw(head)
         if (200..<300).contains(headResponse.statusCode) {
             return Self.fileInfo(from: headResponse)
         }
@@ -1023,7 +1852,7 @@ public struct URLSessionDownloadTransport: DownloadTransport {
         ranged.allHTTPHeaderFields = headers
         ranged.setValue("bytes=0-0", forHTTPHeaderField: "Range")
 
-        let (rangedBody, rangedResponse) = try await raw(ranged)
+        let (rangedBody, rangedResponse) = try await fetchRaw(ranged)
         try Self.validate(rangedResponse, body: rangedBody)
         return Self.fileInfo(from: rangedResponse)
     }
@@ -1085,7 +1914,7 @@ public struct URLSessionDownloadTransport: DownloadTransport {
         request.allHTTPHeaderFields = headers
         request.setValue("bytes=\(from)-\(from + Self.chunkBytes - 1)", forHTTPHeaderField: "Range")
 
-        let (payload, response) = try await raw(request)
+        let (payload, response) = try await fetchRaw(request)
 
         // A range that starts past the end is how a server says "you already
         // have all of it", and it is the only reliable end-of-file signal when
@@ -1117,17 +1946,35 @@ public struct URLSessionDownloadTransport: DownloadTransport {
         return Chunk(data: payload, isLast: isLast)
     }
 
-    private func raw(_ request: URLRequest) async throws(CinemacoreError) -> (Data, HTTPURLResponse) {
-        let payload: Data
-        let response: URLResponse
+    /// One session round trip, as a result value rather than a throw.
+    ///
+    /// An async function that both declares a typed `throws(Error)` and contains
+    /// a `do/catch` crashes the Swift 6.4.1 frontend during SIL lowering on
+    /// Linux (reproduced minimally), so the typed error is carried as a value
+    /// here and re-thrown by the caller.
+    private struct RawOutcome {
+        let payload: Data?
+        let response: URLResponse?
+        let failure: CinemacoreError?
+    }
+
+    private func raw(_ request: URLRequest) async -> RawOutcome {
         do {
-            (payload, response) = try await session.data(for: request)
+            let (payload, response) = try await session.data(for: request)
+            return RawOutcome(payload: payload, response: response, failure: nil)
         } catch let error as URLError {
-            throw APIClient.map(error)
+            return RawOutcome(payload: nil, response: nil, failure: APIClient.map(error))
         } catch is CancellationError {
-            throw .cancelled
+            return RawOutcome(payload: nil, response: nil, failure: .cancelled)
         } catch {
-            throw .offline
+            return RawOutcome(payload: nil, response: nil, failure: .offline)
+        }
+    }
+
+    private func fetchRaw(_ request: URLRequest) async throws(CinemacoreError) -> (Data, HTTPURLResponse) {
+        let outcome = await raw(request)
+        guard let payload = outcome.payload, let response = outcome.response else {
+            throw outcome.failure ?? .offline
         }
         guard let http = response as? HTTPURLResponse else {
             throw .http(status: -1, code: nil, message: nil)

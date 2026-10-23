@@ -23,12 +23,20 @@ let package = Package(
     ],
     dependencies: [
         .package(url: "https://github.com/apple/swift-crypto.git", from: "5.0.0"),
+        // The progressive download server is a real HTTP/1.1 server on
+        // loopback; NIO is the project's approved server stack and keeps the
+        // range/parser behavior testable on Linux.
+        .package(url: "https://github.com/apple/swift-nio.git", from: "2.80.0"),
     ],
     targets: [
         .target(
             name: "CinemacoreCore",
             dependencies: [
                 .product(name: "Crypto", package: "swift-crypto"),
+                .product(name: "NIOCore", package: "swift-nio"),
+                .product(name: "NIOPosix", package: "swift-nio"),
+                .product(name: "NIOHTTP1", package: "swift-nio"),
+                .product(name: "NIOFoundationCompat", package: "swift-nio"),
             ]
         ),
         .testTarget(name: "CinemacoreCoreTests", dependencies: ["CinemacoreCore"]),

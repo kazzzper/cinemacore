@@ -37,7 +37,10 @@ private func makeItem(
     updatedAt: Date = baseDate,
     season: Int? = 1,
     episode: Int? = 1,
-    localFileName: String? = nil
+    localFileName: String? = nil,
+    container: MediaContainer = .mp4,
+    layoutVersion: Int = 2,
+    remoteURL: URL? = nil
 ) -> DownloadItem {
     DownloadItem(
         id: id,
@@ -46,14 +49,16 @@ private func makeItem(
         season: season,
         episode: episode,
         quality: quality,
-        remoteURL: makeURL("\(id).mp4"),
+        remoteURL: remoteURL ?? makeURL("\(id).mp4"),
         cookie: cookie,
+        container: container,
+        layoutVersion: layoutVersion,
         status: status,
         totalBytes: totalBytes,
         bytesWritten: bytesWritten,
         createdAt: createdAt,
         updatedAt: updatedAt,
-        localFileName: localFileName ?? "\(id).mp4"
+        localFileName: localFileName ?? "\(id).\(container.assetExtension)"
     )
 }
 
@@ -303,6 +308,41 @@ struct DownloadItemTests {
         #expect(item.failure == nil)
         // The fallback name has to be usable as a file name.
         #expect(item.localFileName == "42.mp4")
+        #expect(item.container == .mp4)
+        #expect(item.layoutVersion == 1)
+        // A queue written before captions were saved with a download still
+        // decodes; the empty list is the honest answer for it.
+        #expect(item.subtitles == [])
+    }
+
+    @Test("captions stored with a download survive a round trip")
+    func subtitleRoundTrip() throws {
+        var item = makeItem(status: .completed)
+        item.subtitles = [DownloadedSubtitle(language: "English", fileName: "english-abc.vtt")]
+        let data = try JSONEncoder.library.encode(item)
+        let decoded = try JSONDecoder.library.decode(DownloadItem.self, from: data)
+        #expect(decoded.subtitles == item.subtitles)
+    }
+
+    @Test("a manifest URL is classified as HLS even without a stored container")
+    func manifestTolerantDecoding() throws {
+        let json = #"{"id":"42","remoteURL":"https://cdn.test/hls/index.m3u8","localFileName":"42.m3u8"}"#
+        let item = try JSONDecoder.library.decode(DownloadItem.self, from: Data(json.utf8))
+        #expect(item.container == .hls)
+        #expect(item.layoutVersion == 1)
+        #expect(item.isManifestDownload)
+    }
+
+    @Test("a stored container and layout survive a round trip")
+    func containerRoundTrip() throws {
+        let item = makeItem(container: .dash, layoutVersion: 2, remoteURL: makeURL("stream.mpd"))
+        let decoded = try JSONDecoder.library.decode(
+            DownloadItem.self,
+            from: JSONEncoder.library.encode(item)
+        )
+        #expect(decoded == item)
+        #expect(decoded.container == .dash)
+        #expect(decoded.layoutVersion == 2)
     }
 }
 
@@ -1110,6 +1150,36 @@ struct DownloadEnginePersistenceTests {
         #expect(await reader.load().first?.status == .paused)
     }
 
+    @Test("a legacy completed manifest is paused, emptied and deleted")
+    func legacyManifestIsRepaired() async throws {
+        let directory = uniqueDirectory()
+        defer { removeDirectory(directory) }
+        let item = makeItem(
+            id: "legacy",
+            status: .completed,
+            totalBytes: 20,
+            bytesWritten: 20,
+            localFileName: "legacy.m3u8",
+            container: .hls,
+            layoutVersion: 1,
+            remoteURL: makeURL("hls/index.m3u8")
+        )
+        try write([item], to: directory)
+        try Data("#EXTM3U\n".utf8)
+            .write(to: directory.appendingPathComponent("legacy.m3u8"))
+
+        let engine = DownloadEngine(directory: directory, transport: MockTransport(payload: Data()))
+        let loaded = await engine.load()
+        #expect(loaded.first?.status == .paused)
+        #expect(loaded.first?.bytesWritten == 0)
+        #expect(loaded.first?.totalBytes == 0)
+        #expect(loaded.first?.layoutVersion == 2)
+        #expect(loaded.first?.failure != nil)
+        #expect(!FileManager.default.fileExists(
+            atPath: directory.appendingPathComponent("legacy.m3u8").path
+        ))
+    }
+
     @Test("a corrupt queue file yields a clean empty queue instead of throwing")
     func corruptDocument() async throws {
         let directory = uniqueDirectory()
@@ -1361,5 +1431,112 @@ struct URLSessionDownloadTransportTests {
         #expect(URLSessionDownloadTransport.chunkBytes <= 4 << 20)
         #expect(URLSessionDownloadTransport.sliceBytes <= 256 * 1024)
         #expect(URLSessionDownloadTransport.sliceBytes > 0)
+    }
+}
+
+// MARK: - Containers
+
+@Suite("DownloadEngine — containers")
+struct DownloadEngineContainerTests {
+
+    @Test("a manifest fails before the first byte reaches a partial file")
+    func manifestNeverStartsAsAFile() async throws {
+        let directory = uniqueDirectory()
+        defer { removeDirectory(directory) }
+        let item = makeItem(
+            id: "hls",
+            localFileName: "hls.hls",
+            container: .hls,
+            remoteURL: makeURL("hls/index.m3u8")
+        )
+        let engine = DownloadEngine(directory: directory, transport: MockTransport(payload: Data()))
+
+        #expect(await engine.enqueue([item]) == 1)
+        await engine.start()
+        #expect(await waitUntil { await engine.item(item.id)?.status == .failed })
+
+        let failed = await engine.item(item.id)
+        #expect(failed?.bytesWritten == 0)
+        #expect(failed?.failure?.contains("HLS") == true)
+        #expect(!FileManager.default.fileExists(atPath: engine.partialURL(for: item).path))
+        #expect(!FileManager.default.fileExists(atPath: engine.fileURL(for: item).path))
+    }
+}
+
+// MARK: - Captions
+
+/// An episode is not complete until its subtitles are beside it: that is the
+/// difference between a saved file and a watchable one with no connection.
+@Suite("DownloadEngine — captions")
+struct DownloadEngineCaptionTests {
+    private func engine(_ directory: URL, payload: Data) -> DownloadEngine {
+        DownloadEngine(
+            directory: directory,
+            transport: MockTransport(payload: payload, script: [.all]),
+            configuration: DownloadConfiguration(
+                maxConcurrent: 1,
+                maxAttempts: 2,
+                initialBackoff: 0.001,
+                maxBackoff: 0.002,
+                progressFlushBytes: 32 * 1024
+            )
+        )
+    }
+
+    @Test("a finished download keeps the captions fetched for it")
+    func savesCaptions() async throws {
+        let directory = uniqueDirectory()
+        defer { removeDirectory(directory) }
+        let payload = makePayload(64 * 1024)
+        let engine = engine(directory, payload: payload)
+        let item = makeItem(totalBytes: Int64(payload.count))
+        let captionFile = directory.appendingPathComponent("english-abc.vtt")
+
+        // Stands in for the app's archive: it writes the file the provider's
+        // caption body converts into, then reports what it saved.
+        await engine.setCaptionProvider { _ in
+            try? "WEBVTT\n\n00:00.000 --> 00:01.000\nHi\n"
+                .write(to: captionFile, atomically: true, encoding: .utf8)
+            return [DownloadedSubtitle(language: "English", fileName: "english-abc.vtt")]
+        }
+
+        #expect(await engine.enqueue([item]) == 1)
+        await engine.start()
+        #expect(await waitUntil { await engine.item(item.id)?.status == .completed })
+        #expect(await waitUntil { await engine.item(item.id)?.subtitles.isEmpty == false })
+
+        let finished = try #require(await engine.item(item.id))
+        #expect(finished.subtitles.map(\.language) == ["English"])
+        // The picker is handed the saved file, not the caption host.
+        let tracks = engine.subtitleTracks(for: finished)
+        #expect(tracks.first?.provider == .downloaded)
+        #expect(tracks.first?.url.hasPrefix("file://") == true)
+
+        // Deleting the episode takes its captions with it.
+        await engine.remove(item.id)
+        #expect(!FileManager.default.fileExists(atPath: captionFile.path))
+    }
+
+    @Test("a caption lookup that finds nothing leaves the episode complete")
+    func noCaptions() async throws {
+        let directory = uniqueDirectory()
+        defer { removeDirectory(directory) }
+        let payload = makePayload(32 * 1024)
+        let engine = engine(directory, payload: payload)
+        let item = makeItem(totalBytes: Int64(payload.count))
+
+        await engine.setCaptionProvider { _ in [] }
+
+        #expect(await engine.enqueue([item]) == 1)
+        await engine.start()
+        #expect(await waitUntil { await engine.item(item.id)?.status == .completed })
+
+        // Give the detached lookup a chance to run before asserting it changed
+        // nothing: "no captions" must not become "no episode".
+        try? await Task.sleep(for: .milliseconds(50))
+        let finished = try #require(await engine.item(item.id))
+        #expect(finished.status == .completed)
+        #expect(finished.subtitles.isEmpty)
+        #expect(finished.failure == nil)
     }
 }
