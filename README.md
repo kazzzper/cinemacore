@@ -87,6 +87,10 @@ CINEMACORE_ADDR=:8971 go run ./cmd/cinemacore
 curl -s localhost:8080/health
 ```
 
+The gateway serves MovieBox by default. `CINEMACORE_PROVIDER` selects the source: `moviebox`,
+`streamhype` (TMDB catalog, web-embed playback — needs `TMDB_API_KEY`) or `all` (merged search).
+See `docs/adr/0007`.
+
 ### iOS — testable logic (works on Linux)
 
 ```bash
@@ -105,6 +109,12 @@ xtool dev run                           # requires a connected iPhone
 
 First run on a device needs Developer Mode enabled on the phone (iOS 16+) and `xtool auth login`.
 Free provisioning expires after **7 days**, so `xtool dev run` has to be re-run.
+
+**StreamHype source.** Settings → Data source can switch the app to StreamHype (TMDB + the in-app web
+player). There is no bundled TMDB key: paste one from [themoviedb.org](https://www.themoviedb.org/settings/api)
+into `TMDBAPIKey` in `mobile/ios/Cinemacore/Info.plist`, or set `TMDB_API_KEY` in the environment. Without
+it the app stays on the demo catalog and Settings explains why. Downloads and offline play are not
+offered on this source.
 
 **Pointing the app at a gateway.** On launch the app probes `http://127.0.0.1:8080/health`, and falls
 back to the bundled demo catalog if nothing answers — a banner on Home says which source is live. On a

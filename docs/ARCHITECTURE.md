@@ -19,7 +19,7 @@ macOS toolchain is required and the algorithm has exactly one implementation per
 |---|---|
 | `core/sign` | Gateway signing: `X-Client-Token`, `x-tr-signature`, `X-Gslb-Sign`. Frozen by golden vectors. |
 | `core/session` | Signed HTTP client: host failover, guest token, GET response cache. |
-| `core/provider` | `Provider` interface + adapters (`moviebox`, later `bdix`, `addons`, `tv`). |
+| `core/provider` | `Provider` interface + adapters (`moviebox`, `streamhype`; later `bdix`, `addons`, `tv`). |
 | `core/catalog` | Aggregation over providers: merge/dedupe search, fall through on failure. |
 | `core/store/cache` | LRU + TTL cache. |
 | `core/store/library` | Watchlist, history, resume position. *(planned — T-005)* |
@@ -39,6 +39,14 @@ All gateway requests are signed in `core/sign`. The contract was implemented ind
 Media and subtitle requests are **not** routed through either: the CDN expects only a `User-Agent` and
 the per-rendition `Cookie`, so they are fetched directly with header fields. The loopback proxy exists
 for signing-sensitive API flows, not for playback.
+
+## Stream kinds
+
+A rendition is not always media. `StreamRendition.kind` (and the `Stream` it came from) carries how the
+URL plays: empty means direct media an `AVPlayer` can open, `web` means a browser-rendered embed page.
+`core/catalog` preserves the marker through the stream → `PlayInfo` flattening because it is the only
+thing that stops an embed page from being handed to the media stack or queued as a download. The
+`streamhype` adapter is the source that emits it (`adr/0007`); MovieBox never does.
 
 ## Further reading
 
