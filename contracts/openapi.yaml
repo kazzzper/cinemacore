@@ -231,6 +231,9 @@ components:
         dubs:
           type: array
           items: { type: string }
+        dubOptions:
+          type: array
+          items: { $ref: "#/components/schemas/Dub" }
         durationMinutes: { type: integer }
         seasonCount: { type: integer }
         cast:
@@ -277,6 +280,10 @@ components:
         cookie:
           type: string
           description: Media-request cookie (the gateway's signCookie); the only credential the CDN accepts.
+        kind:
+          type: string
+          description: Per-rendition playback marker; see `StreamRendition.kind`.
+          enum: [web]
     Stream:
       type: object
       required: [url]
@@ -288,6 +295,12 @@ components:
         headers:
           type: object
           additionalProperties: { type: string }
+        kind:
+          type: string
+          description: >-
+            How the URL plays; the same marker `StreamRendition.kind` carries,
+            before the stream is flattened into renditions.
+          enum: [web]
     Subtitle:
       type: object
       required: [lang, url]
@@ -302,9 +315,18 @@ components:
         name: { type: string }
         role: { type: string }
         avatar: { type: string }
+    Dub:
+      type: object
+      description: One selectable language version; playback re-resolves subjectId.
+      required: [subjectId, languageName]
+      properties:
+        subjectId: { type: string }
+        languageName: { type: string }
+        languageCode: { type: string }
+        isOriginal: { type: boolean }
     ResourceDetector:
       type: object
-      description: One provider playable resource for a title, such as a dub variant.
+      description: One provider playable mirror/upload resource for a title.
       required: [resourceId, name]
       properties:
         resourceId: { type: string }
@@ -327,6 +349,14 @@ components:
         url: { type: string }
         size: { type: string }
         cookie: { type: string }
+        kind:
+          type: string
+          description: >-
+            How the URL plays. Empty (or absent) is direct media — an HLS
+            manifest or progressive file a native player can open. `web` is a
+            browser-rendered embed page: open it in a web view, never hand it
+            to a native player or downloader.
+          enum: [web]
     SubtitleTrack:
       type: object
       required: [language, url]

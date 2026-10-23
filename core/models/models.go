@@ -13,6 +13,7 @@ type Subject struct {
 	Synopsis          string             `json:"synopsis,omitempty"`
 	Genres            []string           `json:"genres,omitempty"`
 	Dubs              []string           `json:"dubs,omitempty"`
+	DubOptions        []Dub              `json:"dubOptions,omitempty"`
 	DurationMinutes   int                `json:"durationMinutes,omitempty"`
 	SeasonCount       int                `json:"seasonCount,omitempty"`
 	Cast              []CastMember       `json:"cast,omitempty"`
@@ -26,7 +27,16 @@ type CastMember struct {
 	Avatar string `json:"avatar,omitempty"`
 }
 
-// ResourceDetector is one provider playable resource, such as a dub variant.
+// Dub is one selectable language version. The provider models it as a separate
+// subject, so SubjectID is what playback must re-resolve.
+type Dub struct {
+	SubjectID    string `json:"subjectId"`
+	LanguageName string `json:"languageName"`
+	LanguageCode string `json:"languageCode,omitempty"`
+	Original     bool   `json:"isOriginal,omitempty"`
+}
+
+// ResourceDetector is one provider playable mirror/upload resource.
 type ResourceDetector struct {
 	ResourceID string `json:"resourceId"`
 	Name       string `json:"name"`
@@ -50,6 +60,21 @@ type Season struct {
 	Episodes []Episode `json:"episodes"`
 }
 
+// Stream is a resolved playback source.
+type Stream struct {
+	URL       string            `json:"url"`
+	Qualities []Quality         `json:"qualities,omitempty"`
+	Headers   map[string]string `json:"headers,omitempty"`
+	// Kind marks how the URL plays. Empty (the default) is direct media: an
+	// HLS manifest or a progressive file a video player can open. "web" is a
+	// browser-rendered embed page — the URL must be opened in a web view, never
+	// handed to a native player or downloader.
+	Kind string `json:"kind,omitempty"`
+}
+
+// KindWeb marks a stream whose URL is an embedded web player page.
+const KindWeb = "web"
+
 // Quality is one selectable stream rendition. Size and Cookie are per-rendition
 // (upstream emits one stream entry, and one cookie, per resolution); Cookie is
 // the media request's only credential and must reach the wire.
@@ -58,13 +83,10 @@ type Quality struct {
 	URL    string `json:"url"`
 	Size   string `json:"size,omitempty"`
 	Cookie string `json:"cookie,omitempty"`
-}
-
-// Stream is a resolved playback source.
-type Stream struct {
-	URL       string            `json:"url"`
-	Qualities []Quality         `json:"qualities,omitempty"`
-	Headers   map[string]string `json:"headers,omitempty"`
+	// Kind carries the Stream's marker per rendition: empty = media, KindWeb =
+	// an embed page. Kept on the rendition too so a rendition list is
+	// self-describing without its parent Stream.
+	Kind string `json:"kind,omitempty"`
 }
 
 // Subtitle is one caption track.
@@ -80,6 +102,7 @@ type StreamRendition struct {
 	URL     string `json:"url"`
 	Size    string `json:"size,omitempty"`
 	Cookie  string `json:"cookie,omitempty"`
+	Kind    string `json:"kind,omitempty"`
 }
 
 // SubtitleTrack is one caption track in a PlayInfo payload.

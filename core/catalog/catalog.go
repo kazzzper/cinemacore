@@ -144,14 +144,20 @@ func (c *Catalog) Suggestions(ctx context.Context, q string) ([]string, error) {
 
 // renditions flattens a stream's qualities, falling back to the bare URL. The
 // per-rendition cookie is the media request's only credential (see
-// player-spec.md §8), so it must not be dropped here.
+// player-spec.md §8), so it must not be dropped here, and the stream kind
+// (media vs. web embed) must survive the flatten: a web embed never reaches a
+// native player or downloader.
 func renditions(s models.Stream) []models.StreamRendition {
 	out := make([]models.StreamRendition, 0, len(s.Qualities))
 	for _, q := range s.Qualities {
-		out = append(out, models.StreamRendition{Quality: q.Label, URL: q.URL, Size: q.Size, Cookie: q.Cookie})
+		kind := q.Kind
+		if kind == "" {
+			kind = s.Kind
+		}
+		out = append(out, models.StreamRendition{Quality: q.Label, URL: q.URL, Size: q.Size, Cookie: q.Cookie, Kind: kind})
 	}
 	if len(out) == 0 && s.URL != "" {
-		out = append(out, models.StreamRendition{Quality: "Auto", URL: s.URL, Cookie: s.Headers["Cookie"]})
+		out = append(out, models.StreamRendition{Quality: "Auto", URL: s.URL, Cookie: s.Headers["Cookie"], Kind: s.Kind})
 	}
 	return out
 }
