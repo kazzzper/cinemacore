@@ -85,3 +85,118 @@ so the bridge listens with `net.Listen("tcp", "127.0.0.1:0")` and calls `http.Se
 2. Is the swift-nio proxy dropped entirely, or kept for the HLS-cookie case `plan.md` §7 describes?
 3. CI: is a Mac ever in the loop, or is Linux-only the permanent target? (Only affects whether we
    keep gomobile as an alternative.)
+- 2026-10-20T10:26:11.028Z — registered (opencode)
+- 2026-10-20T10:27:44.585Z — claimed T-009 — P0: download container model, persistence, decoy and manifest correctness
+
+## T-009 · P0 container model, persistence, decoy and manifest correctness
+
+**Status:** implementation complete; tests and app build green. Commit deferred because the tree also
+contains uncommitted built-in-provider work that must not be swept into a task commit.
+
+### Landed
+
+- `MediaContainer` classifies MP4 / HLS / DASH / unknown by content type first, then extension; a
+  manifest is never a direct download.
+- `DownloadItem` persists `container` and a one-time `layoutVersion`; old documents decode
+  tolerantly (`container` inferred from the URL, layout `1`).
+- Legacy completed manifest rows are repaired on load: playlist bytes dropped, row paused, user
+  metadata kept. A manifest URL is rejected with HTTP 415 before any `.part` is created.
+- `StreamRendition.container` exposes the same classification for enqueue-time gating.
+- Both signed `signCookie` decoys and CloudFront `Resource` decoys are rejected in Swift and Go;
+  `notice.mp4` and the `macdn.aoneroom.com/other/` shape remain covered.
+- `fileSize` recurses into directory assets, so HLS/DASH working trees will account correctly.
+- `CatalogResolver` gained an injectable reachability probe; the resolver tests no longer need a
+  live gateway, and production still uses the four-second probe.
+- The two catalog test suites are nested under one serialized suite so they cannot reset each
+  other's stub routes.
+
+### Verification
+
+- `swift test` — **234 tests, 39 suites, 0 failures**.
+- `go build ./... && go test ./... -race` — green.
+- `xtool dev build` — `Build complete!`, app written to `xtool/Cinemacore.app`.
+
+## T-010 · P1 background URLSession transfer engine
+
+**Status:** implementation complete; tests and app build green. Commit deferred because the tree also
+contains uncommitted built-in-provider work that must not be swept into a task commit.
+
+### Landed
+
+- One stable background session (`com.cinemacore.app.downloads`) with `sessionSendsLaunchEvents`,
+  a serial delegate queue, and an app-delegate completion-handler handoff.
+- `.part` stays the contiguous committed prefix; daemon bodies land in
+  `.staging/<item>/<epoch>/chunk-N`. Absolute chunk indices survive relaunch, and a launch drains
+  every contiguous staged chunk before re-enqueueing only missing ranges.
+- A 10 GB item fits the default 32 MB × 512-task window, so suspension does not leave most of the
+  file without a daemon task. The session's six-connection limit bounds actual network concurrency.
+- Launch reconciliation reattaches only rows a process death demoted; user pauses cancel their
+  stale task, orphan tasks are cancelled, and rows whose daemon work vanished stay paused.
+- Pause keeps the epoch and staged bytes. Cancel rotates the epoch, cancels tasks, and deletes
+  staging. Success and terminal failure also stop daemon work; terminal failure keeps staging for a
+  later retry.
+- Range-ignoring servers restart from zero and fall back to one whole-file daemon task. Short bodies,
+  wrong `Content-Range`, non-2xx bodies, and cancelled tasks never enter the committed prefix.
+- 258 Swift tests and the full Go suite are green; `xtool dev build` writes the device app.
+
+### Remaining risk
+
+- The daemon contract is exercised against fakes, not a live suspended device. T-017 owns the
+  on-device suspend/relaunch/force-quit proof.
+- HLS/DASH segment ingestion still belongs to T-012/T-014; this task provides the container-agnostic
+  request/staging seam they will use.
+- 2026-10-20T11:10:42.329Z — updated T-009: container model + manifest gates + signed-decoy fix; swift test 234 green, go test -race green, xtool build green
+- 2026-10-20T11:10:42.378Z — done T-009
+- 2026-10-20T11:11:56.608Z — claimed T-010 — P1: background URLSession transfer engine for MP4/HLS/DASH
+- 2026-10-20T11:53:36.197Z — updated T-010: background URLSession engine, staged chunk resume, reattach reconciliation, app delegate wiring; 258 Swift tests green, Go suite green, xtool build green
+- 2026-10-20T11:53:36.249Z — done T-010
+- 2026-10-20T11:53:57.009Z — claimed T-011 — P1: progressive local asset server and play-while-downloading for MP4
+
+## T-011 · P1 progressive local asset server
+
+**Status:** implementation in progress. Three workers own disjoint files:
+
+- loopback NIO server + range responses + socket tests (`ProgressiveAssetServer.swift`,
+  `ProgressiveAsset.swift`, `ProgressiveAssetServerTests.swift`);
+- MP4 box parser and bounded `moov` prefetch (`MP4Progressive.swift`,
+  `MP4ProgressiveTests.swift`);
+- app wiring: progressive asset registry, player source, background pause/PiP, minimal Downloads
+  play gating (`ProgressiveDownloads.swift`, player/app screens).
+
+The server is a real HTTP/1.1 endpoint bound to `127.0.0.1:0` with an unguessable path token. It
+serves the growing `.part` as a clamped `206` prefix, retries a not-yet-written range with `503`,
+and serves a prefetched `moov` from a separate cache file when the atom sits at the end of the MP4.
+The player starts once the committed prefix reaches the readiness threshold; until then it streams
+remotely while the background download continues. Leaving the foreground pauses playback unless PiP
+is already active.
+
+SwiftNIO 2.104 was added to `CinemacoreCore`; the stub API builds on Linux and the Darwin app.
+- 2026-10-21T09:21:33.437Z — claimed T-021 — Player fullscreen surface stability and controls declutter
+- 2026-10-21T09:21:33.493Z — done T-021: Stable single-surface fullscreen; safe-area chrome; orientation policy helper; options sheet declutter; xtool build green (21.09s); 352/354 Swift tests pass, 2 pre-existing HEVC failures
+
+## T-021 · Player fullscreen surface stability and controls declutter
+
+**Status:** implementation complete; `xtool dev build` green. On-device rotation, safe-area bleed and
+PiP behaviour remain unverified because this host has no simulator or device.
+
+### Landed
+
+- `PlayerScreen` keeps one `VStack` with `playerBox` first and conditionally hides the details, so
+  toggling fullscreen no longer moves `PlayerLayerView` in the view tree or rebuilds its
+  `AVPlayerLayer` / PiP controller.
+- `surfaceCanvas` owns `.ignoresSafeArea()`; the chrome stays in the safe-area-sized stage, so
+  fullscreen fills the display without putting controls under the notch or home indicator.
+- `PlayerOrientation` centralises the iOS 16+ path: the `AppDelegate` mask reads
+  `supportedOrientations`, `setNeedsUpdateOfSupportedInterfaceOrientations()` refreshes it, and
+  `requestGeometryUpdate` asks for landscape/portrait. No `UIDevice.setValue` anywhere.
+- `PlayerModel.enterTerminalState` resets fullscreen and orientation for `.empty`, `.failed` and
+  `.locked`, so an error screen never stays sideways.
+- Display, Output (PiP/AirPlay) and Download moved into `PlayerOptionsSheet`; transport and
+  fullscreen stay on the picture. Download runs from the sheet's `onDismiss` to avoid presenting an
+  alert over a sheet.
+
+### Verification
+
+- `xtool dev build` — `Build complete! (21.09 secs)`, app written to `xtool/Cinemacore.app`.
+- `swift test` — 354 tests / 55 suites; 352 passed. The two failures are the pre-existing
+  `HEVCRewriteTests.swift` HTTP cases at lines 134 and 164, unrelated to this task.

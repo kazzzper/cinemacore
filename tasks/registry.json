@@ -26,7 +26,28 @@
       "harness": "opencode",
       "model": null,
       "startedAt": "2026-10-17T21:31:24.602Z",
-      "lastSeen": "2026-10-17T21:31:24.641Z"
+      "lastSeen": "2026-10-20T10:26:11.025Z"
+    },
+    {
+      "id": "dsh-player",
+      "harness": "codex",
+      "model": null,
+      "startedAt": "2026-10-21T07:36:10.889Z",
+      "lastSeen": "2026-10-21T07:36:10.894Z"
+    },
+    {
+      "id": "dsh-subs",
+      "harness": "codex",
+      "model": null,
+      "startedAt": "2026-10-21T08:38:33.782Z",
+      "lastSeen": "2026-10-21T08:38:33.786Z"
+    },
+    {
+      "id": "buffy",
+      "harness": "freebuff",
+      "model": null,
+      "startedAt": "2026-10-23T08:02:59.263Z",
+      "lastSeen": "2026-10-23T08:02:59.264Z"
     }
   ],
   "tasks": [
@@ -137,6 +158,204 @@
       ],
       "acceptance": "offline path works; go test ./... -race green",
       "updatedAt": "2026-10-17T21:31:24.890Z",
+      "links": []
+    },
+    {
+      "id": "T-009",
+      "title": "P0: download container model, persistence, decoy and manifest correctness",
+      "status": "done",
+      "module": "mobile/ios",
+      "owner": "opencode",
+      "deps": [],
+      "acceptance": "MP4/HLS/DASH classified; manifests never completed as files; decoy sign-cookie rejected; old downloads.json decodes; unit tests green",
+      "updatedAt": "2026-10-20T11:10:42.377Z",
+      "links": []
+    },
+    {
+      "id": "T-010",
+      "title": "P1: background URLSession transfer engine for MP4/HLS/DASH",
+      "status": "done",
+      "module": "mobile/ios",
+      "owner": "opencode",
+      "deps": [],
+      "acceptance": "stable background session; chunk and segment resume; app-delegate events; force-quit reconciliation; tests green",
+      "updatedAt": "2026-10-20T11:53:36.248Z",
+      "links": []
+    },
+    {
+      "id": "T-011",
+      "title": "P1: progressive local asset server and play-while-downloading for MP4",
+      "status": "doing",
+      "module": "mobile/ios",
+      "owner": "opencode",
+      "deps": [],
+      "acceptance": "loopback Range server; moov prefetch; readiness threshold; AVPlayer plays .part; playback pauses on background with PiP option",
+      "updatedAt": "2026-10-20T11:53:57.008Z",
+      "links": []
+    },
+    {
+      "id": "T-012",
+      "title": "P1: HLS downloader, local HLS asset and playback",
+      "status": "todo",
+      "module": "mobile/ios",
+      "owner": null,
+      "deps": [],
+      "acceptance": "master/media parsing; variant selection; init/segments/keys; local playlist; play while downloading; tests green",
+      "updatedAt": "2026-10-20T10:26:12.118Z",
+      "links": []
+    },
+    {
+      "id": "T-013",
+      "title": "P2: quality planner, download sheet, settings default and 10GB cap",
+      "status": "todo",
+      "module": "mobile/ios",
+      "owner": null,
+      "deps": [],
+      "acceptance": "sheet always appears; real HLS/DASH/MP4 choices; single Source row; batch quality fallback; 10GB block; ask-every-time default; tests green",
+      "updatedAt": "2026-10-20T10:26:12.372Z",
+      "links": []
+    },
+    {
+      "id": "T-014",
+      "title": "P2/P3: DASH download via local HLS bridge, gateway fallback only if validation requires it",
+      "status": "todo",
+      "module": "mobile/ios",
+      "owner": null,
+      "deps": [],
+      "acceptance": "MPD parse; unencrypted fMP4 bridge; audio/video; live validation; gateway fallback contract only if needed; tests green",
+      "updatedAt": "2026-10-20T10:26:12.658Z",
+      "links": []
+    },
+    {
+      "id": "T-015",
+      "title": "P3: downloads UI, storage limits, low-space guardrails and in-progress play entry",
+      "status": "todo",
+      "module": "mobile/ios",
+      "owner": null,
+      "deps": [],
+      "acceptance": "in-progress play gating; 5GB warning and 2GB block; no auto-delete; storage bar; per-title 10GB; tests green",
+      "updatedAt": "2026-10-20T10:26:12.934Z",
+      "links": []
+    },
+    {
+      "id": "T-016",
+      "title": "P3: player source precedence, PiP, background resume and completion transition",
+      "status": "todo",
+      "module": "mobile/ios",
+      "owner": null,
+      "deps": [],
+      "acceptance": "completed > in-progress > remote; position preserved; PiP option; completion does not interrupt; tests green",
+      "updatedAt": "2026-10-20T10:26:13.217Z",
+      "links": []
+    },
+    {
+      "id": "T-017",
+      "title": "P4: device verification, ADR/docs, full build/test and commit",
+      "status": "todo",
+      "module": "mobile/ios",
+      "owner": null,
+      "deps": [],
+      "acceptance": "xtool build; live HLS/DASH/MP4/decoy checks; 162+ tests; ADR; clean tree; conventional commit",
+      "updatedAt": "2026-10-20T10:26:13.432Z",
+      "links": []
+    },
+    {
+      "id": "T-018",
+      "title": "P1: HEVC (hev1) playback — codec-aware source ranking + error-screen return",
+      "status": "doing",
+      "module": "ios",
+      "owner": "dsh-player",
+      "deps": [],
+      "acceptance": "hev1 sources no longer dead-end; decodable codec ranks first; player error screen has a Return button; swift test + xtool build green",
+      "updatedAt": "2026-10-21T09:30:32.448Z",
+      "links": []
+    },
+    {
+      "id": "T-019",
+      "title": "P2: measure hvcC.numOfArrays on a genuine hev1 file; rewrite hev1->hvc1 only if it is a rename",
+      "status": "doing",
+      "module": "ios",
+      "owner": null,
+      "deps": [],
+      "acceptance": "one genuine hev1 URL range-read; numOfArrays recorded in ADR 0006; decision taken on rename vs remux",
+      "updatedAt": "2026-10-21T08:17:38.672Z",
+      "links": []
+    },
+    {
+      "id": "T-020",
+      "title": "Subtitle pipeline: correct episode keying + source picker",
+      "status": "todo",
+      "module": null,
+      "owner": null,
+      "deps": [],
+      "acceptance": null,
+      "updatedAt": "2026-10-21T09:53:10.468Z",
+      "links": []
+    },
+    {
+      "id": "T-021",
+      "title": "Player fullscreen surface stability and controls declutter",
+      "status": "done",
+      "module": "mobile/ios",
+      "owner": "opencode",
+      "deps": [],
+      "acceptance": "Single AVPlayerLayer surface survives fullscreen toggles; canvas fills display while chrome stays in safe area; orientation resets on terminal states; non-transport options live in PlayerOptionsSheet; xtool dev build green",
+      "updatedAt": "2026-10-21T09:21:33.492Z",
+      "links": []
+    },
+    {
+      "id": "T-022",
+      "title": "StreamHype source: TMDB catalog + web-embed playback (Go provider + iOS source mode)",
+      "status": "done",
+      "module": "core/provider",
+      "owner": "buffy",
+      "deps": [],
+      "acceptance": "streamhype provider green; kind:web survives to PlayInfo; iOS StreamHype source mode with web player; downloads refuse web embeds; tests + xtool build green",
+      "updatedAt": "2026-10-23T08:07:39.714Z",
+      "links": []
+    },
+    {
+      "id": "T-023",
+      "title": "Player: captions must not resize the picture; downloads must queue a video rung",
+      "status": "review",
+      "module": "mobile/ios",
+      "owner": "buffy",
+      "deps": [],
+      "acceptance": "long cue never changes the player box size; caption overlay capped; download queue picks a video-capable rendition; local flags cleared on stream attempt; player retries the local file before reporting an offline error",
+      "updatedAt": "2026-10-23T08:40:33.794Z",
+      "links": []
+    },
+    {
+      "id": "T-024",
+      "title": "Play failures must show a readable reason and offer a retry",
+      "status": "review",
+      "module": "mobile/ios",
+      "owner": "buffy",
+      "deps": [],
+      "acceptance": "A URLError during play-info maps to offline/timedOut rather than an NSError dump; userMessage never repeats a raw NSError; transport failures are retryable; swift test + xtool build green",
+      "updatedAt": "2026-10-23T09:17:52.639Z",
+      "links": []
+    },
+    {
+      "id": "T-025",
+      "title": "A completed download must play offline, and never be reported as a network failure",
+      "status": "review",
+      "module": "mobile/ios",
+      "owner": "buffy",
+      "deps": [],
+      "acceptance": "A downloaded hev1 file is patched in place and replayed; a rejected on-device copy is named instead of the network; swift test + xtool build green",
+      "updatedAt": "2026-10-23T09:33:48.753Z",
+      "links": []
+    },
+    {
+      "id": "T-026",
+      "title": "Downloads carry their captions, and the player's levels live on the edges",
+      "status": "review",
+      "module": "mobile/ios",
+      "owner": "buffy",
+      "deps": [],
+      "acceptance": "A finished download stores WebVTT tracks beside the file and seeds the picker offline; volume on the right and brightness on the left via vertical drags with an auto-hiding readout; a download row opens its season; swift test + xtool build green",
+      "updatedAt": "2026-10-23T10:05:54.236Z",
       "links": []
     }
   ]
