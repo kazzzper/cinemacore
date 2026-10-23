@@ -21,6 +21,7 @@ struct DecodingTests {
         #expect(subject.title == "Heat")
         #expect(subject.genres == [])
         #expect(subject.dubs == [])
+        #expect(subject.dubOptions == [])
         #expect(subject.seasonCount == 1)
         #expect(subject.cast == [])
         #expect(subject.resourceDetectors == [])
@@ -135,12 +136,36 @@ struct DecodingTests {
         #expect(section.items == [])
     }
 
+    @Test("live dubs keep the subject id that playback needs")
+    func liveDubsCarrySubjectIDs() throws {
+        let wire = try decode(WireSubject.self, """
+        {
+          "subjectId":"9048868765454191080",
+          "title":"Dune",
+          "dubs":[
+            {"lanCode":"en","lanName":"Original Audio","original":true,
+             "subjectId":"9048868765454191080"},
+            {"lanCode":"hi","lanName":"Hindi dub","original":false,
+             "subjectId":"6077290422534030680"}
+          ]
+        }
+        """)
+        let subject = wire.subject
+        #expect(subject.dubs == ["Original Audio", "Hindi dub"])
+        #expect(subject.dubOptions.map(\.subjectId)
+            == ["9048868765454191080", "6077290422534030680"])
+        #expect(subject.dubOptions.last?.languageCode == "hi")
+        #expect(subject.dubOptions.last?.isOriginal == false)
+    }
+
     @Test("a full Subject still round-trips through encode and decode")
     func roundTrip() throws {
         let subject = Subject(
             id: "42", title: "Dune", poster: "https://x/p.jpg", year: 2021,
             rating: 8.0, kind: "1", synopsis: "Spice.", genres: ["Sci-Fi"],
-            dubs: ["English"], durationMinutes: 155, seasonCount: 1,
+            dubs: ["English"], dubOptions: [
+                Dub(subjectId: "42", languageName: "English", languageCode: "en", isOriginal: true),
+            ], durationMinutes: 155, seasonCount: 1,
             cast: [CastMember(name: "Chalamet", role: "Paul", avatar: nil)],
             resourceDetectors: [ResourceDetector(resourceId: "res_1", name: "English")]
         )

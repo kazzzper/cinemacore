@@ -21,10 +21,13 @@ public struct Subject: Identifiable, Hashable, Sendable, Codable {
     public let synopsis: String?
     public let genres: [String]
     public let dubs: [String]
+    /// Selectable language versions. Unlike ``dubs`` (display labels only), each
+    /// entry carries the provider subject id that must be re-resolved.
+    public let dubOptions: [Dub]
     public let durationMinutes: Int?
     public let seasonCount: Int
     public let cast: [CastMember]
-    /// Provider playable resources (dub/sub variants) offered for this title.
+    /// Provider playable resources (mirror/upload variants) offered for this title.
     public let resourceDetectors: [ResourceDetector]
 
     public init(
@@ -37,6 +40,7 @@ public struct Subject: Identifiable, Hashable, Sendable, Codable {
         synopsis: String? = nil,
         genres: [String] = [],
         dubs: [String] = [],
+        dubOptions: [Dub] = [],
         durationMinutes: Int? = nil,
         seasonCount: Int = 1,
         cast: [CastMember] = [],
@@ -51,6 +55,7 @@ public struct Subject: Identifiable, Hashable, Sendable, Codable {
         self.synopsis = synopsis
         self.genres = genres
         self.dubs = dubs
+        self.dubOptions = dubOptions
         self.durationMinutes = durationMinutes
         self.seasonCount = seasonCount
         self.cast = cast
@@ -118,7 +123,43 @@ public struct Subject: Identifiable, Hashable, Sendable, Codable {
     public var widePosterURL: URL? { posterURL }
 }
 
-/// One selectable playback resource the provider offers (a dub or sub variant).
+/// One selectable language version.
+///
+/// The provider models a dub as a separate subject, not as an audio track
+/// inside the original file: choosing Hindi means resolving the Hindi subject's
+/// own streams. The display `dubs` list has no id, which is why it cannot drive
+/// playback; this type carries the id that can.
+public struct Dub: Identifiable, Hashable, Sendable, Codable {
+    public let subjectId: String
+    public let languageName: String
+    public let languageCode: String?
+    public let isOriginal: Bool
+
+    public init(
+        subjectId: String,
+        languageName: String,
+        languageCode: String? = nil,
+        isOriginal: Bool = false
+    ) {
+        self.subjectId = subjectId
+        self.languageName = languageName
+        self.languageCode = languageCode
+        self.isOriginal = isOriginal
+    }
+
+    public var id: String { subjectId }
+
+    /// `"Original Audio"` already says it; only append the marker when the
+    /// provider's label does not.
+    public var displayName: String {
+        guard isOriginal, !languageName.lowercased().contains("original") else {
+            return languageName
+        }
+        return "\(languageName) (Original)"
+    }
+}
+
+/// One selectable playback resource the provider offers (a mirror/upload variant).
 public struct ResourceDetector: Identifiable, Hashable, Sendable, Codable {
     public let resourceId: String
     public let name: String
@@ -281,15 +322,42 @@ public struct StreamRendition: Identifiable, Hashable, Sendable, Codable {
     public let size: String?
     /// Per-rendition cookie the CDN expects, when the provider supplies one.
     public let cookie: String?
+    /// The provider's declared video codec (`"hevc"`, `"h264"`), when it says.
+    ///
+    /// Only ever a ranking hint: the container is the truth, and the gateway
+    /// omits or mislabels this field often enough that refusing a source on it
+    /// would drop titles that play perfectly.
+    public let codec: String?
+    /// How the URL plays: `nil` (or absent on the wire) is direct media — an
+    /// HLS manifest or progressive file `AVPlayer` can open. `"web"` is a
+    /// browser-rendered embed page: it must open in a web view, and it must
+    /// never reach a native player or a downloader.
+    public let kind: String?
 
-    public init(quality: String, url: String, size: String? = nil, cookie: String? = nil) {
+    /// StreamHype-style web embed marker, mirrored from `models.KindWeb` in Go
+    /// core (`contracts/openapi.yaml` StreamRendition.kind).
+    public static let webKind = "web"
+
+    public init(
+        quality: String,
+        url: String,
+        size: String? = nil,
+        cookie: String? = nil,
+        codec: String? = nil,
+        kind: String? = nil
+    ) {
         self.quality = quality
         self.url = url
         self.size = size
         self.cookie = cookie
+        self.codec = codec
+        self.kind = kind
     }
 
     public var id: String { "\(quality)-\(url)" }
+
+    /// `true` when the URL is an embed page, not media.
+    public var isWebEmbed: Bool { kind == Self.webKind }
 
     /// Sort key so `1080p` outranks `720p` rather than sorting lexically.
     ///
@@ -304,6 +372,33 @@ public struct StreamRendition: Identifiable, Hashable, Sendable, Codable {
     }
 
     public var urlValue: URL? { URL(string: url) }
+
+    /// The URL extension is all the rendition carries; content-type sniffing
+    /// happens when the downloader actually fetches it.
+    public var container: MediaContainer {
+        guard let urlValue else { return .unknown }
+        return MediaContainer.classify(url: urlValue)
+    }
+}
+
+/// Where a caption track came from.
+///
+/// The picker has to tell two English tracks apart: the provider's own caption
+/// and a community file in the same language are different subtitles, and a
+/// viewer who picks the wrong one sees dialogue that does not match the picture.
+public enum SubtitleSource: String, Hashable, Sendable, Codable, CaseIterable {
+    /// A caption the provider published for this title.
+    case provider
+    /// A community track from Stremio's OpenSubtitles v3 addon.
+    case community
+
+    /// The name the source picker shows.
+    public var label: String {
+        switch self {
+        case .provider: "Provider"
+        case .community: "Community"
+        }
+    }
 }
 
 /// One subtitle track.
@@ -312,18 +407,47 @@ public struct SubtitleTrack: Identifiable, Hashable, Sendable, Codable {
     public let url: String
     /// `"vtt"` or `"srt"`.
     public let format: String
+    /// A human-readable release or file label, when the source names one.
+    ///
+    /// Two tracks can share a language and a source yet be different files —
+    /// the addon lists one subtitle per release it matched — so the picker needs
+    /// this to be usable. Optional so a payload that carries no label still
+    /// decodes.
+    public let source: String?
+    public let provider: SubtitleSource
 
-    public init(language: String, url: String, format: String = "vtt") {
+    public init(
+        language: String,
+        url: String,
+        format: String = "vtt",
+        source: String? = nil,
+        provider: SubtitleSource = .provider
+    ) {
         self.language = language
         self.url = url
         self.format = format
+        self.source = source
+        self.provider = provider
     }
 
-    public var id: String { "\(language)-\(url)" }
+    /// The URL alone identifies a file: the same release can be listed twice
+    /// under one language, while two different files never share a URL. The
+    /// language stays in the key so a `Set` of tracks reads like the picker.
+    public var id: String { "\(provider.rawValue)-\(language)-\(url)" }
 
     /// AVPlayer only renders WebVTT, so SRT has to be converted first.
     public var needsConversion: Bool {
         format.lowercased() == "srt"
+    }
+
+    /// The line under the language in the picker: the release label when the
+    /// source named one, otherwise the source itself.
+    ///
+    /// A track with no label still has to be distinguishable from its siblings,
+    /// and the provider is the next most useful fact about it.
+    public var detail: String {
+        guard let source, !source.isEmpty else { return provider.label }
+        return "\(provider.label) · \(source)"
     }
 }
 
@@ -350,9 +474,13 @@ public struct PlayInfo: Hashable, Sendable, Codable {
     /// bitrate do the work; an explicit quality is a *hint*, not a different
     /// URL (all renditions share one URL). Only when no `Auto` entry exists do
     /// we fall back to the highest labelled resolution.
+    ///
+    /// Delegates to ``PlaybackSourcePolicy/preferred(_:)`` rather than taking the
+    /// first `Auto` row it sees: the provider lists a title's soundtracks beside
+    /// its video, and an `Auto` entry that is one of them would make this
+    /// convenience pick a source that plays music over a black picture.
     public var preferredStream: StreamRendition? {
-        streams.first { $0.quality.caseInsensitiveCompare("Auto") == .orderedSame }
-            ?? rankedStreams.first
+        PlaybackSourcePolicy.preferred(streams)
     }
 
     /// Playback speeds offered by the player sheet, matching the Android build

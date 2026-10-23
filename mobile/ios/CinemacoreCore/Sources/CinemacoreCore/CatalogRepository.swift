@@ -92,10 +92,12 @@ public struct RemoteCatalogRepository: CatalogRepository {
     struct SuggestionsResponse: Decodable, Sendable { let items: [String] }
 }
 
-/// Picks the live gateway when it answers, and the bundled catalog otherwise.
+/// Picks the catalog source at launch.
 ///
-/// Resolution happens once at launch: a health probe decides, and the choice is
-/// reported to the UI so a demo session is never mistaken for live data.
+/// Built-in is the default and involves no gateway at all: the app talks to
+/// MovieBox directly in native Swift. The gateway is a deliberate override for a
+/// user running the Go core on purpose — a failed probe in built-in mode is not
+/// a fault, so it must not be worded like one.
 public struct CatalogResolver: Sendable {
     public struct Resolution: Sendable {
         public let repository: any CatalogRepository
@@ -103,18 +105,42 @@ public struct CatalogResolver: Sendable {
         public let note: String
     }
 
-    private let liveURL: URL?
+    /// How the app gets its catalog.
+    public enum SourceMode: String, Codable, Sendable, CaseIterable {
+        /// Native Swift, direct to MovieBox. Default.
+        case builtIn
+        /// Native Swift, direct to StreamHype's sources (TMDB + web embeds).
+        case streamHype
+        /// The HTTP gateway, chosen deliberately by the user.
+        case gateway
+    }
+
+    private let mode: SourceMode
+    private let gatewayURL: URL?
+    private let probe: @Sendable (URL) async -> Bool
     private let fallback: @Sendable () -> any CatalogRepository
 
-    public init(liveURL: URL?, fallback: @escaping @Sendable () -> any CatalogRepository) {
-        self.liveURL = liveURL
+    public init(
+        mode: SourceMode = .builtIn,
+        gatewayURL: URL? = nil,
+        probe: @escaping @Sendable (URL) async -> Bool = { url in
+            await APIClient(baseURL: url, timeout: 4).isReachable()
+        },
+        fallback: @escaping @Sendable () -> any CatalogRepository
+    ) {
+        self.mode = mode
+        self.gatewayURL = gatewayURL
+        self.probe = probe
         self.fallback = fallback
     }
 
     public func resolve() async -> Resolution {
-        if let liveURL {
-            let client = APIClient(baseURL: liveURL, timeout: 4)
-            let reachable = await client.isReachable()
+        switch mode {
+        case .gateway:
+            guard let gatewayURL else {
+                return Resolution(repository: fallback(), note: "Demo data — no gateway URL set")
+            }
+            let reachable = await probe(gatewayURL)
             // `isReachable()` folds a cancelled probe into "unreachable";
             // committing that would install the demo catalog for a launch the
             // user already interrupted.
@@ -123,15 +149,49 @@ public struct CatalogResolver: Sendable {
             }
             if reachable {
                 return Resolution(
-                    repository: RemoteCatalogRepository(client: client),
-                    note: "Live · \(liveURL.host() ?? liveURL.absoluteString)"
+                    repository: RemoteCatalogRepository(
+                        client: APIClient(baseURL: gatewayURL, timeout: 4)
+                    ),
+                    note: "Gateway · \(gatewayURL.host() ?? gatewayURL.absoluteString)"
                 )
             }
             return Resolution(
                 repository: fallback(),
-                note: "Gateway unreachable — showing the bundled catalog"
+                note: "Demo data — gateway not answering"
+            )
+
+        case .builtIn:
+            // The native provider needs no probe: it fails over hosts itself
+            // and surfaces its own errors. Only when it cannot even bootstrap
+            // does the bundled catalog step in, and that is stated as demo
+            // data rather than as a broken gateway.
+            let session = MovieBoxSession(timeout: 6)
+            do {
+                _ = try await session.guestLogin()
+                return Resolution(repository: MovieBoxCatalogRepository(), note: "MovieBox")
+            } catch {
+                return Resolution(
+                    repository: fallback(),
+                    note: "Demo data — connect to the internet to load the catalog"
+                )
+            }
+
+        case .streamHype:
+            // TMDB needs no probe either: every call surfaces its own error,
+            // and playback resolves to a web embed without a network round
+            // trip, so the resolution cannot half-fail at launch. A missing
+            // key is the one thing that *would* fail every call, so it is
+            // reported here rather than as an empty catalog.
+            guard let apiKey = StreamHypeCatalogRepository.configuredAPIKey else {
+                return Resolution(
+                    repository: fallback(),
+                    note: "Demo data — StreamHype needs a TMDB API key"
+                )
+            }
+            return Resolution(
+                repository: StreamHypeCatalogRepository(apiKey: apiKey),
+                note: "StreamHype · TMDB · web playback"
             )
         }
-        return Resolution(repository: fallback(), note: "Bundled catalog")
     }
 }

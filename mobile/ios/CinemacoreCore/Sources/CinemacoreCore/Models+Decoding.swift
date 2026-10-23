@@ -17,7 +17,7 @@ import Foundation
 
 extension Subject {
     public enum CodingKeys: String, CodingKey {
-        case id, title, poster, year, rating, kind, synopsis, genres, dubs
+        case id, title, poster, year, rating, kind, synopsis, genres, dubs, dubOptions
         case durationMinutes, seasonCount, cast, resourceDetectors
     }
 
@@ -32,6 +32,7 @@ extension Subject {
         synopsis = try container.decodeIfPresent(String.self, forKey: .synopsis)
         genres = try container.decodeIfPresent([String].self, forKey: .genres) ?? []
         dubs = try container.decodeIfPresent([String].self, forKey: .dubs) ?? []
+        dubOptions = try container.decodeIfPresent([Dub].self, forKey: .dubOptions) ?? []
         durationMinutes = try container.decodeIfPresent(Int.self, forKey: .durationMinutes)
         seasonCount = try container.decodeIfPresent(Int.self, forKey: .seasonCount) ?? 1
         cast = try container.decodeIfPresent([CastMember].self, forKey: .cast) ?? []
@@ -50,6 +51,20 @@ extension CastMember {
         name = try container.decode(String.self, forKey: .name)
         role = try container.decodeIfPresent(String.self, forKey: .role) ?? ""
         avatar = try container.decodeIfPresent(String.self, forKey: .avatar)
+    }
+}
+
+extension Dub {
+    public enum CodingKeys: String, CodingKey {
+        case subjectId, languageName, languageCode, isOriginal
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        subjectId = try container.decode(String.self, forKey: .subjectId)
+        languageName = try container.decode(String.self, forKey: .languageName)
+        languageCode = try container.decodeIfPresent(String.self, forKey: .languageCode)
+        isOriginal = try container.decodeIfPresent(Bool.self, forKey: .isOriginal) ?? false
     }
 }
 
@@ -144,7 +159,7 @@ extension Page {
 
 extension StreamRendition {
     public enum CodingKeys: String, CodingKey {
-        case quality, url, size, cookie
+        case quality, url, size, cookie, codec, kind
     }
 
     public init(from decoder: any Decoder) throws {
@@ -153,12 +168,14 @@ extension StreamRendition {
         url = try container.decode(String.self, forKey: .url)
         size = try container.decodeIfPresent(String.self, forKey: .size)
         cookie = try container.decodeIfPresent(String.self, forKey: .cookie)
+        codec = try container.decodeIfPresent(String.self, forKey: .codec)
+        kind = try container.decodeIfPresent(String.self, forKey: .kind)
     }
 }
 
 extension SubtitleTrack {
     public enum CodingKeys: String, CodingKey {
-        case language, url, format
+        case language, url, format, source, provider
     }
 
     public init(from decoder: any Decoder) throws {
@@ -166,6 +183,11 @@ extension SubtitleTrack {
         language = try container.decode(String.self, forKey: .language)
         url = try container.decode(String.self, forKey: .url)
         format = try container.decodeIfPresent(String.self, forKey: .format) ?? "vtt"
+        // A payload written before the picker gained a source still decodes:
+        // the gateway publishes these tracks, so the provider is the honest
+        // default.
+        source = try container.decodeIfPresent(String.self, forKey: .source)
+        provider = try container.decodeIfPresent(SubtitleSource.self, forKey: .provider) ?? .provider
     }
 }
 

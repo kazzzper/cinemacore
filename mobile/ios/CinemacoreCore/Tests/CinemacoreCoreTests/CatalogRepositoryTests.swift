@@ -14,6 +14,9 @@ import FoundationNetworking
 /// No `@unchecked Sendable` here: `URLProtocol` already declares one, and
 /// re-stating it is both redundant and a warning on Linux.
 final class StubURLProtocol: URLProtocol {
+    /// Stable origin for tests that need the same host as the route table.
+    static let baseURL = URL(string: "http://gateway.test")!
+
     struct Response: Sendable {
         var status: Int
         var body: Data
@@ -85,6 +88,9 @@ private func stubSession() -> URLSession {
     config.protocolClasses = [StubURLProtocol.self]
     return URLSession(configuration: config)
 }
+
+@Suite("Catalog wire", .serialized)
+struct CatalogWireTests {
 
 @Suite("RemoteCatalogRepository wire", .serialized)
 struct CatalogRepositoryTests {
@@ -263,13 +269,54 @@ struct CatalogRepositoryTests {
 
 @Suite("CatalogResolver", .serialized)
 struct CatalogResolverTests {
-    @Test("no live URL resolves to the bundled catalog")
-    func bundledFallback() async {
-        let resolver = CatalogResolver(liveURL: nil, fallback: { FixtureCatalogRepository() })
+    // Built-in mode performs a live bootstrap against MovieBox, so it cannot be
+    // exercised hermetically; the gateway paths below are, via the stub
+    // transport that serves /health.
+    //
+    // A gateway that answers resolves to the remote repository and names it.
+    @Test("gateway mode with a reachable gateway resolves to the remote repository")
+    func gatewayReachable() async throws {
+        let base = try #require(URL(string: StubURLProtocol.baseURL.absoluteString))
 
+        let resolver = CatalogResolver(
+            mode: .gateway,
+            gatewayURL: base,
+            probe: { _ in true },
+            fallback: { FixtureCatalogRepository() }
+        )
+        let resolution = await resolver.resolve()
+
+        #expect(resolution.repository.isLive)
+        #expect(resolution.note.hasPrefix("Gateway"))
+    }
+
+    /// The note must read as demo data, not as a fault: built-in mode is the
+    /// default and a failed probe there is not an error state.
+    @Test("gateway mode with an unreachable gateway falls back and says demo data")
+    func gatewayUnreachable() async {
+        let resolver = CatalogResolver(
+            mode: .gateway,
+            gatewayURL: StubURLProtocol.baseURL,
+            probe: { _ in false },
+            fallback: { FixtureCatalogRepository() }
+        )
         let resolution = await resolver.resolve()
 
         #expect(resolution.repository.isLive == false)
-        #expect(resolution.note == "Bundled catalog")
+        #expect(resolution.note.hasPrefix("Demo data"))
     }
+
+    @Test("gateway mode without a URL falls back and says demo data")
+    func gatewayWithoutURL() async {
+        let resolver = CatalogResolver(
+            mode: .gateway,
+            gatewayURL: nil,
+            fallback: { FixtureCatalogRepository() }
+        )
+        let resolution = await resolver.resolve()
+
+        #expect(resolution.repository.isLive == false)
+        #expect(resolution.note.hasPrefix("Demo data"))
+    }
+}
 }
