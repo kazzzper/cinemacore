@@ -1,5 +1,8 @@
 import Testing
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 @testable import CinemacoreCore
 
 @Suite("Subject")
@@ -384,5 +387,52 @@ struct CinemacoreErrorTests {
                 == "The server returned an error (500)."
         )
         #expect(CinemacoreError.locked(reason: "Not available here").userMessage == "Not available here")
+    }
+
+    /// The reported "Something went wrong" screen was an `NSError` description:
+    /// `Error Domain=NSURLErrorDomain Code=-1009 …` across two screens of text,
+    /// with the failing URL and the URLSession task id in it. A status below 100
+    /// is the sentinel for "the wire never answered", and it has no status to
+    /// quote and no message worth repeating.
+    @Test("a raw transport dump is never the message on screen")
+    func rawDumpIsNotAMessage() {
+        let dump = """
+        Error Domain=NSURLErrorDomain Code=-1009 "The Internet connection appears to be offline." \
+        UserInfo={_NSURLErrorFailingURLSessionTaskErrorKey=LocalDataTask <41960AD4>.\n\
+        _NSURLErrorNWPathKey=unsatisfied (No network route)}
+        """
+        let sentinel = CinemacoreError.http(status: -1, code: nil, message: dump)
+        #expect(sentinel.userMessage == "The provider is unavailable right now.")
+        #expect(sentinel.isRetryable)
+
+        #expect(CinemacoreError.upstream(dump).userMessage == "The provider is unavailable right now.")
+        // A server sentence is still repeated verbatim…
+        #expect(CinemacoreError.http(status: 503, code: nil, message: "Try again shortly.").userMessage == "Try again shortly.")
+        // …but not a raw envelope: `.http` carries the body as sent.
+        #expect(
+            CinemacoreError.http(status: 403, code: nil, message: #"{"code":441,"message":""}"#)
+                .userMessage == "The server returned an error (403)."
+        )
+    }
+
+    @Test("a transport failure is classified by what the network refused")
+    func transportClassification() {
+        #expect(CinemacoreError.transport(.notConnectedToInternet) == .offline)
+        #expect(CinemacoreError.transport(.dnsLookupFailed) == .offline)
+        #expect(CinemacoreError.transport(.cannotConnectToHost) == .offline)
+        #expect(CinemacoreError.transport(.timedOut) == .timedOut)
+        #expect(CinemacoreError.transport(.cancelled) == .cancelled)
+        #expect(!CinemacoreError.transport(.cancelled).isRetryable)
+
+        // A TLS or protocol failure is not a lost connection, but it is still
+        // worth one more attempt rather than a permanent screen.
+        let refused = CinemacoreError.transport(.badServerResponse)
+        #expect(refused.isRetryable)
+        #expect(!refused.userMessage.isEmpty && !refused.userMessage.contains("Domain="))
+
+        // Errors are classified through the same door, so a catch block has no
+        // reason to stringify one.
+        #expect(CinemacoreError.transport(URLError(.networkConnectionLost)) == .offline)
+        #expect(CinemacoreError.transport(CinemacoreError.locked(reason: "x")) == .locked(reason: "x"))
     }
 }
