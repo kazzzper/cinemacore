@@ -9,6 +9,14 @@
 	<key>CFBundleVersion</key>
 	<string>1</string>
 
+	<!-- TMDB v3 API key for the StreamHype catalog source (Settings › Data
+	     source). Register at themoviedb.org → Settings → API and paste the
+	     key here. Deliberately empty in source: a committed key cannot be
+	     rotated, and it would be the registering account's, not the user's.
+	     `TMDB_API_KEY` in the environment takes precedence when present. -->
+	<key>TMDBAPIKey</key>
+	<string></string>
+
 	<!-- The brand is dark-only; see docs/adr for the rationale. -->
 	<key>UIUserInterfaceStyle</key>
 	<string>Dark</string>

@@ -3,11 +3,13 @@ import CinemacoreCore
 
 @main
 struct CinemacoreApp: App {
+    @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @State private var app = AppModel(
         library: FileLibraryStore(directory: Self.libraryDirectory)
     )
     @State private var showsSplash = true
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some Scene {
         WindowGroup {
@@ -31,6 +33,11 @@ struct CinemacoreApp: App {
             // The brand is dark-only: the source app's "light" palette is
             // byte-identical to its dark one, so a light mode would be invented.
             .preferredColorScheme(.dark)
+            // The loopback server reads sandbox files and is only useful while
+            // the app is foreground, so its lifetime follows the scene.
+            .onChange(of: scenePhase) { _, phase in
+                Task { await app.handleScenePhase(phase) }
+            }
             .task {
                 await app.bootstrap()
                 // A splash that outlives its work is just a delay.

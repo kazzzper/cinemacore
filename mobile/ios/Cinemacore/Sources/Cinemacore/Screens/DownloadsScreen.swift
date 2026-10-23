@@ -125,11 +125,15 @@ struct DownloadsScreen: View {
         let item = row.item
         let showIDs = app.downloads.filter { $0.subjectID == item.subjectID }.map(\.id)
         return HStack(alignment: .top, spacing: Layout.spacing3) {
-            RemoteImage(url: posterURL(item.poster))
-                .frame(width: 56, height: 84)
-                .clipShape(RoundedRectangle(cornerRadius: Layout.radiusSmall, style: .continuous))
+            // Tapping the episode opens its season, where the rest of the show
+            // can be queued: a download row is a way in, not only a receipt.
+            NavigationLink(value: catalogRoute(for: item)) {
+                HStack(alignment: .top, spacing: Layout.spacing3) {
+                    RemoteImage(url: posterURL(item.poster))
+                        .frame(width: 56, height: 84)
+                        .clipShape(RoundedRectangle(cornerRadius: Layout.radiusSmall, style: .continuous))
 
-            VStack(alignment: .leading, spacing: Layout.spacing1) {
+                    VStack(alignment: .leading, spacing: Layout.spacing1) {
                 if row.showsSubjectTitle {
                     Text(item.title)
                         .font(Typography.rowTitle)
@@ -179,7 +183,20 @@ struct DownloadsScreen: View {
                         .foregroundStyle(theme.textSecondary.color)
                         .lineLimit(1)
                 }
+
+                // Captions travel with the episode now, so the row can say so
+                // instead of leaving the viewer to discover it in the player.
+                if !item.subtitles.isEmpty {
+                    Label("\(item.subtitles.count) captions", systemImage: "captions.bubble")
+                        .font(Typography.badge)
+                        .foregroundStyle(theme.textSecondary.color)
+                        .lineLimit(1)
+                }
+                    }
+                }
             }
+            .buttonStyle(.plain)
+            .accessibilityHint("Opens this title's season so you can download more episodes")
 
             Spacer(minLength: 0)
 
@@ -262,6 +279,14 @@ struct DownloadsScreen: View {
                 icon("play.fill")
             }
             .accessibilityLabel("Play \(displayName(item))")
+        } else if app.progressiveReadyIDs.contains(item.id) {
+            // The loopback server only offers a row once its committed prefix
+            // (and moov, when known) is enough to start, so this is a real
+            // Play button rather than a promise the player cannot keep.
+            NavigationLink(value: Route.player(playbackRequest(for: item))) {
+                icon("play.fill")
+            }
+            .accessibilityLabel("Play \(displayName(item)) while downloading")
         } else if item.status == .failed {
             iconButton("arrow.clockwise", label: "Retry \(displayName(item))") {
                 Task { await app.retry(item.id) }
@@ -438,6 +463,22 @@ struct DownloadsScreen: View {
     private func displayName(_ item: DownloadItem) -> String {
         guard let label = item.episodeLabel else { return item.title }
         return "\(item.title) · \(label)"
+    }
+
+    /// The title this download belongs to, at the season it came from.
+    ///
+    /// The row only stores an id and a name, which is enough to open the page:
+    /// `DetailScreen` re-resolves the real subject from the catalog.
+    private func catalogRoute(for item: DownloadItem) -> Route {
+        Route.catalog(
+            Subject(
+                id: item.subjectID,
+                title: item.title,
+                poster: item.poster,
+                kind: item.season == nil ? "movie" : "series"
+            ),
+            season: item.season
+        )
     }
 
     private func playbackRequest(for item: DownloadItem) -> PlaybackRequest {

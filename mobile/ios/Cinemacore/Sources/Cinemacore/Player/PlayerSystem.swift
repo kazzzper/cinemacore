@@ -186,8 +186,8 @@ final class PictureInPicture: NSObject, AVPictureInPictureControllerDelegate {
 
     /// Adopts `layer`, replacing any layer adopted before it.
     ///
-    /// Toggling fullscreen rebuilds the video layer, so this is called more than
-    /// once per screen: the controller has to follow the layer that is on
+    /// Still a replacement rather than an assertion: a rebuilt screen can hand
+    /// over a new layer, and the controller has to follow the layer that is on
     /// screen, not the first one it ever saw.
     func attach(to layer: AVPlayerLayer) {
         guard Self.isSupported, controller?.playerLayer !== layer else { return }

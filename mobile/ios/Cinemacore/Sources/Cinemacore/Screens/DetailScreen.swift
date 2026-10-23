@@ -12,10 +12,12 @@ struct DetailScreen: View {
     @State private var downloadNotice: String?
     @Environment(\.theme) private var theme
 
-    init(subject: Subject, app: AppModel) {
+    init(subject: Subject, app: AppModel, season: Int? = nil) {
         self.subject = subject
         self.app = app
-        _model = State(initialValue: DetailViewModel(subject: subject, repository: app.repository))
+        _model = State(
+            initialValue: DetailViewModel(subject: subject, repository: app.repository, season: season)
+        )
     }
 
     private var playback: PlaybackRequest {
@@ -23,6 +25,17 @@ struct DetailScreen: View {
             subject: subject,
             season: model.isSeries ? model.selectedSeason : nil,
             episode: model.selectedEpisode,
+            resourceId: model.selectedLanguage?.resourceId
+        )
+    }
+
+    /// Built from the row's own episode so the destination cannot pick up a
+    /// stale selection when the tap and `selectEpisode` land in the same tick.
+    private func playbackRequest(for episode: Episode) -> PlaybackRequest {
+        PlaybackRequest(
+            subject: subject,
+            season: episode.season,
+            episode: episode,
             resourceId: model.selectedLanguage?.resourceId
         )
     }
@@ -262,9 +275,7 @@ struct DetailScreen: View {
             .padding(.horizontal, Layout.spacing4)
 
             ForEach(model.episodes) { episode in
-                Button {
-                    model.selectEpisode(episode)
-                } label: {
+                NavigationLink(value: Route.player(playbackRequest(for: episode))) {
                     HStack(spacing: Layout.spacing3) {
                         RemoteImage(url: episode.stillURL)
                             .frame(width: 96, height: 54)
@@ -283,6 +294,13 @@ struct DetailScreen: View {
                         }
                         Spacer(minLength: 0)
 
+                        Image(systemName: "play.fill")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundStyle(theme.background.color)
+                            .frame(width: 28, height: 28)
+                            .background(theme.brand.color, in: Circle())
+                            .accessibilityHidden(true)
+
                         if model.selectedEpisode?.id == episode.id {
                             Image(systemName: "checkmark.circle.fill")
                                 .foregroundStyle(theme.brand.color)
@@ -292,6 +310,8 @@ struct DetailScreen: View {
                     .frame(minHeight: Layout.minimumTarget)
                 }
                 .buttonStyle(.plain)
+                .simultaneousGesture(TapGesture().onEnded { model.selectEpisode(episode) })
+                .accessibilityHint("Plays this episode")
             }
         }
     }

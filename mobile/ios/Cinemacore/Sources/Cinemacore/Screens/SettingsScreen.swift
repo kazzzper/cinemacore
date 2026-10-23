@@ -8,12 +8,27 @@ struct SettingsScreen: View {
     @State private var gatewayDraft = ""
     @Environment(\.theme) private var theme
 
+    private var sourceBinding: Binding<CatalogResolver.SourceMode> {
+        Binding(
+            get: { app.settings.sourceMode },
+            set: { mode in Task { await app.setSourceMode(mode) } }
+        )
+    }
+
     var body: some View {
         ZStack {
             theme.background.color.ignoresSafeArea()
 
             List {
-                Section("Data source") {
+                Section {
+                    Picker("Catalog source", selection: sourceBinding) {
+                        Text("Built-in (direct)").tag(CatalogResolver.SourceMode.builtIn)
+                        Text("StreamHype (web)").tag(CatalogResolver.SourceMode.streamHype)
+                        Text("Gateway server").tag(CatalogResolver.SourceMode.gateway)
+                    }
+                    .pickerStyle(.inline)
+                    .labelsHidden()
+
                     LabeledContent("Status") {
                         HStack(spacing: 6) {
                             Circle()
@@ -23,20 +38,32 @@ struct SettingsScreen: View {
                                 .foregroundStyle(theme.textSecondary.color)
                         }
                     }
+                } header: {
+                    Text("Data source")
+                } footer: {
+                    Text(sourceFooter)
+                }
 
-                    TextField("Gateway URL", text: $gatewayDraft)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                        .keyboardType(.URL)
+                if app.settings.sourceMode == .gateway {
+                    Section {
+                        TextField("http://192.168.1.20:8080", text: $gatewayDraft)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                            .keyboardType(.URL)
 
-                    Button("Apply and reconnect") {
-                        Task {
-                            await app.setGatewayURL(
-                                gatewayDraft.isEmpty ? nil : gatewayDraft
-                            )
+                        Button("Apply and reconnect") {
+                            Task {
+                                await app.setGatewayURL(
+                                    gatewayDraft.isEmpty ? nil : gatewayDraft
+                                )
+                            }
                         }
+                        .disabled(gatewayDraft == (app.settings.gatewayURL ?? ""))
+                    } header: {
+                        Text("Gateway")
+                    } footer: {
+                        Text("Use your machine's LAN address; 127.0.0.1 on the phone is the phone itself.")
                     }
-                    .disabled(gatewayDraft == (app.settings.gatewayURL ?? ""))
                 }
 
                 Section("Library") {
@@ -76,5 +103,18 @@ struct SettingsScreen: View {
         .navigationTitle("Settings")
         .navigationBarTitleDisplayMode(.inline)
         .task { gatewayDraft = app.settings.gatewayURL ?? "" }
+    }
+
+    private var sourceFooter: String {
+        switch app.settings.sourceMode {
+        case .gateway:
+            "The gateway is your own Cinemacore server (go run ./cmd/cinemacore)."
+        case .streamHype:
+            StreamHypeCatalogRepository.isConfigured
+                ? "Catalog from TMDB; playback opens the StreamHype web player in-app. Downloads and offline play are not offered on this source."
+                : "StreamHype needs a TMDB API key: set TMDBAPIKey in Info.plist (free from themoviedb.org) or TMDB_API_KEY in the environment. Until then the bundled demo catalog is shown."
+        case .builtIn:
+            "Built-in talks to the catalog directly — no server required."
+        }
     }
 }

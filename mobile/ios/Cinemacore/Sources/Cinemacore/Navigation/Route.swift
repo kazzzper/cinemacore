@@ -65,6 +65,12 @@ extension PlaybackRequest {
 /// Every push destination in the app.
 enum Route: Hashable {
     case detail(Subject)
+    /// The same page, opened at a season.
+    ///
+    /// This is the way back from a downloaded episode to the rest of its
+    /// season: the download row already knows the subject and the season it
+    /// came from, so the catalogue opens where the viewer left it.
+    case catalog(Subject, season: Int?)
     case player(PlaybackRequest)
     case history
     case manageCategories
@@ -84,6 +90,8 @@ struct RouteDestination: View {
         switch route {
         case .detail(let subject):
             DetailScreen(subject: subject, app: app)
+        case .catalog(let subject, let season):
+            DetailScreen(subject: subject, app: app, season: season)
         case .player(let request):
             PlayerScreen(request: request, app: app)
         case .history:
