@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 
 /// Playback transport helpers.
 ///
@@ -266,5 +269,94 @@ public struct SubtitleCache: Sendable {
             .appendingPathComponent("cinemacore-\(fileName)")
         try body.write(to: url, atomically: true, encoding: .utf8)
         return url
+    }
+}
+
+/// A caption track that travelled with a download.
+///
+/// Saved as WebVTT beside the media file, so a completed episode carries its
+/// captions too. Without it an offline copy plays the picture and offers no
+/// subtitles at all, which is the one thing a download is supposed to be
+/// complete about.
+public struct DownloadedSubtitle: Codable, Hashable, Sendable, Identifiable {
+    public let language: String
+    /// File name inside the downloads directory, where the engine wrote it. A
+    /// name rather than a path: the container can move between launches.
+    public let fileName: String
+    /// The release or file label the track came with, when the source had one.
+    public let source: String?
+
+    public init(language: String, fileName: String, source: String? = nil) {
+        self.language = language
+        self.fileName = fileName
+        self.source = source
+    }
+
+    public var id: String { fileName }
+
+    /// The picker's own type, pointed at the saved file.
+    ///
+    /// The URL is a real `file:` URL, so the player never asks the network for
+    /// a caption that is already on disk — which is the whole reason this type
+    /// exists.
+    public func track(in directory: URL) -> SubtitleTrack {
+        SubtitleTrack(
+            language: language,
+            url: directory.appendingPathComponent(fileName).absoluteString,
+            format: "vtt",
+            source: source,
+            provider: .downloaded
+        )
+    }
+}
+
+/// Fetches caption tracks and writes them beside a download.
+///
+/// Injected into the download engine, so an episode leaves with its captions.
+/// Best effort per track: a dead host costs that language, never the file that
+/// has already finished downloading.
+public struct SubtitleArchive: Sendable {
+    private let directory: URL
+    private let session: URLSession
+
+    public init(directory: URL, session: URLSession = .shared) {
+        self.directory = directory
+        self.session = session
+    }
+
+    /// The saved tracks, in the order the source listed them.
+    ///
+    /// A track that cannot be fetched, decoded or written is skipped: subtitles
+    /// are an addition to the download, not a condition of it. The page size is
+    /// capped because the provider lists one caption per release it matched,
+    /// and a whole shelf of them is not worth the wait.
+    public func store(
+        _ tracks: [SubtitleTrack],
+        headers: [String: String] = [:],
+        limit: Int = 12
+    ) async -> [DownloadedSubtitle] {
+        let cache = SubtitleCache(directory: directory)
+        var saved: [DownloadedSubtitle] = []
+        var seen = Set<String>()
+        for track in tracks.prefix(max(0, limit)) {
+            guard let url = URL(string: track.url) else { continue }
+            var request = URLRequest(url: url)
+            for (field, value) in headers { request.setValue(value, forHTTPHeaderField: field) }
+            guard let (data, response) = try? await session.data(for: request),
+                  let http = response as? HTTPURLResponse,
+                  (200..<300).contains(http.statusCode),
+                  let body = String(data: data, encoding: .utf8),
+                  !body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                  let fileURL = try? cache.prepare(track: track, contents: body)
+            else { continue }
+            // Two releases can share a language but never a file, and the cache
+            // name is keyed on the track id, so the digest keeps them apart.
+            let fileName = fileURL.lastPathComponent
+            guard seen.insert(fileName).inserted else { continue }
+            saved.append(
+                DownloadedSubtitle(language: track.language, fileName: fileName, source: track.source)
+            )
+        }
+        return saved
     }
 }

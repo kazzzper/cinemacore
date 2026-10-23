@@ -391,12 +391,16 @@ public enum SubtitleSource: String, Hashable, Sendable, Codable, CaseIterable {
     case provider
     /// A community track from Stremio's OpenSubtitles v3 addon.
     case community
+    /// A caption saved beside the episode by the download, so it plays with no
+    /// network at all. Same language, different promise: this one is on disk.
+    case downloaded
 
     /// The name the source picker shows.
     public var label: String {
         switch self {
         case .provider: "Provider"
         case .community: "Community"
+        case .downloaded: "Downloaded"
         }
     }
 }
