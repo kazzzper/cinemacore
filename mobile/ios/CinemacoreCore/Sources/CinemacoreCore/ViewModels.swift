@@ -122,10 +122,14 @@ public final class DetailViewModel {
 
     private let repository: any CatalogRepository
 
-    public init(subject: Subject, repository: any CatalogRepository) {
+    /// `season` preselects a season the caller already cares about — the row a
+    /// viewer tapped in Downloads — so the page opens where they were rather
+    /// than at season 1. It is honoured only when the title actually has it.
+    public init(subject: Subject, repository: any CatalogRepository, season: Int? = nil) {
         self.subject = subject
         self.repository = repository
         self.selectedLanguage = subject.resourceDetectors.first
+        if let season { self.selectedSeason = season }
     }
 
     public var seasons: [Season] { state.value?.seasons ?? [] }
@@ -171,7 +175,9 @@ public final class DetailViewModel {
 
     private func selectDefaultEpisode() {
         guard isSeries else { return }
-        if let first = seasons.first, selectedSeason != first.number {
+        // A requested season survives the load when the title has it; only a
+        // season that does not exist falls back to the first.
+        if !seasons.contains(where: { $0.number == selectedSeason }), let first = seasons.first {
             selectedSeason = first.number
         }
         if selectedEpisode == nil {
