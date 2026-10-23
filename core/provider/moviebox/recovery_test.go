@@ -159,6 +159,141 @@ func TestStream_UGCCollectionMatchesEpisode(t *testing.T) {
 	}
 }
 
+func TestStream_UGCCollectionEpisodeTokenBoundary(t *testing.T) {
+	cases := []struct {
+		name    string
+		fixture string
+		season  int
+		episode int
+		want    string
+	}{
+		{
+			name:    "episode 2 does not match the S1EP10 prefix",
+			fixture: "ugc-collection-s1ep10-first.json",
+			season:  1,
+			episode: 2,
+			want:    "ep2-1080",
+		},
+		{
+			name:    "episode 1 does not match the S1EP10 prefix",
+			fixture: "ugc-collection-ep1-ep10.json",
+			season:  1,
+			episode: 1,
+			want:    "ep1-1080",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			p, done := fixtureProvider(t, map[string]string{
+				"/play-info":                "play-info-decoy.json",
+				"/first-by-subject":         "ugc-first-series.json",
+				"/collection/download-list": tc.fixture,
+			})
+			defer done()
+
+			s, err := p.Stream(context.Background(), "985706818477379368", tc.season, tc.episode)
+			if err != nil {
+				t.Fatalf("Stream: %v", err)
+			}
+			if !strings.Contains(s.URL, tc.want) {
+				t.Fatalf("url = %q, want the %s resource", s.URL, tc.want)
+			}
+		})
+	}
+}
+
+func TestStream_UGCCollectionMissingEpisodeIsUnavailable(t *testing.T) {
+	p, done := fixtureProvider(t, map[string]string{
+		"/play-info":                "play-info-decoy.json",
+		"/first-by-subject":         "ugc-first-series.json",
+		"/collection/download-list": "ugc-collection-series.json",
+		"/video/download":           "ugc-download-series.json",
+	})
+	defer done()
+
+	s, err := p.Stream(context.Background(), "985706818477379368", 1, 9)
+	if err == nil {
+		t.Fatalf("Stream returned the wrong episode for a missing E9: %+v", s)
+	}
+	if !provider.IsUnavailable(err) {
+		t.Fatalf("err = %v (%T), want a typed UnavailableError", err, err)
+	}
+	if s.URL != "" || len(s.Qualities) != 0 {
+		t.Fatalf("wrong-episode source leaked into a stream: %+v", s)
+	}
+}
+
+func TestStream_UGCSingleVideoFallbackOnlyForEpisodeOne(t *testing.T) {
+	p, done := fixtureProvider(t, map[string]string{
+		"/play-info":        "play-info-decoy.json",
+		"/first-by-subject": "ugc-first-movie.json",
+		"/video/download":   "ugc-download-movie.json",
+	})
+	defer done()
+	ctx := context.Background()
+
+	s, err := p.Stream(ctx, "9048868765454191080", 1, 2)
+	if err == nil {
+		t.Fatalf("Stream returned the single video for episode 2: %+v", s)
+	}
+	if !provider.IsUnavailable(err) {
+		t.Fatalf("err = %v (%T), want a typed UnavailableError", err, err)
+	}
+	if s.URL != "" {
+		t.Fatalf("single video leaked into episode 2: %+v", s)
+	}
+
+	for _, tc := range []struct {
+		name    string
+		season  int
+		episode int
+	}{
+		{name: "movie", season: 0, episode: 0},
+		{name: "episode 1", season: 1, episode: 1},
+	} {
+		s, err := p.Stream(ctx, "9048868765454191080", tc.season, tc.episode)
+		if err != nil {
+			t.Fatalf("%s: Stream: %v", tc.name, err)
+		}
+		if !strings.HasPrefix(s.URL, "https://bcdn.hakunaymatata.com/") {
+			t.Fatalf("%s: url = %q, want the single video resource", tc.name, s.URL)
+		}
+	}
+}
+
+func TestStream_ResourceListingFiltersEpisode(t *testing.T) {
+	p, done := fixtureProvider(t, map[string]string{
+		"/play-info": "play-info-decoy.json",
+		"/resource":  "resource-series-episodes.json",
+	})
+	defer done()
+	ctx := context.Background()
+
+	s, err := p.Stream(ctx, "985706818477379368", 1, 2)
+	if err != nil {
+		t.Fatalf("Stream: %v", err)
+	}
+	if len(s.Qualities) != 1 || !strings.Contains(s.Qualities[0].URL, "ep2-720") {
+		t.Fatalf("S1E2 stream = %+v, want only the E2 resource", s)
+	}
+
+	missing, err := p.Stream(ctx, "985706818477379368", 1, 3)
+	if err == nil {
+		t.Fatalf("Stream returned a source for missing E3: %+v", missing)
+	}
+	if !provider.IsUnavailable(err) {
+		t.Fatalf("err = %v (%T), want a typed UnavailableError", err, err)
+	}
+
+	movie, err := p.Stream(ctx, "9048868765454191080", 0, 0)
+	if err != nil {
+		t.Fatalf("movie Stream: %v", err)
+	}
+	if len(movie.Qualities) != 2 {
+		t.Fatalf("movie qualities = %+v, want the whole listing", movie.Qualities)
+	}
+}
+
 func TestStream_PrefersNonDecoyLaterStream(t *testing.T) {
 	const body = `{"code":0,"data":{"streams":[
 		{"url":"https://macdn.aoneroom.com/other/2026/10/10/80da52722ee7de7a4303290af6783424.mp4","resolutions":"1080","signCookie":""},
@@ -212,6 +347,7 @@ func TestManifestFromSignCookie(t *testing.T) {
 		b64 := base64.StdEncoding.EncodeToString([]byte(policy))
 		return "CloudFront-Policy=" + strings.NewReplacer("+", "-", "/", "~", "=", "_").Replace(b64)
 	}
+	decoy := "https://macdn.aoneroom.com/other/2026/10/10/80da52722ee7de7a4303290af6783424.mp4"
 	cases := []struct {
 		name   string
 		cookie string
@@ -235,6 +371,14 @@ func TestManifestFromSignCookie(t *testing.T) {
 			cookie: cloudFront("https://cdn.example/dash/tree/"),
 			want:   "https://cdn.example/dash/tree/index.mpd",
 			ok:     true,
+		},
+		{
+			name:   "signed decoy prefix is not a manifest",
+			cookie: "urlprefix=" + base64.RawURLEncoding.EncodeToString([]byte(decoy)) + ":sign=x",
+		},
+		{
+			name:   "cloudfront decoy resource is not a manifest",
+			cookie: cloudFront(decoy),
 		},
 		{name: "unrelated cookie", cookie: "SomeOtherCookie=123"},
 		{name: "empty", cookie: ""},

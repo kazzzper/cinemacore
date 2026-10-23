@@ -19,7 +19,7 @@ const subjectJSON = `{
   "durationSeconds":9300,"genre":"Sci-Fi, Adventure","cover":{"url":"https://img.example/p.jpg"},
   "imdbRatingValue":"8.0","seNum":2,
   "staffList":[{"name":"Denis Villeneuve","character":"Director","avatarUrl":"https://img.example/a.jpg"}],
-  "dubs":[{"lanName":"English"}],
+  "dubs":[{"lanCode":"en","lanName":"English","original":true,"subjectId":"42"}],
   "resourceDetectors":[{"resourceId":"r1","source":"example.cdn"}]
 }`
 
@@ -170,6 +170,10 @@ func TestHomeFallsBackToDailyRec(t *testing.T) {
 	}
 	if len(s.Dubs) != 1 || s.Dubs[0] != "English" {
 		t.Fatalf("dubs = %v", s.Dubs)
+	}
+	if len(s.DubOptions) != 1 || s.DubOptions[0].SubjectID != "42" ||
+		s.DubOptions[0].LanguageCode != "en" || !s.DubOptions[0].Original {
+		t.Fatalf("dub options = %+v", s.DubOptions)
 	}
 	if len(s.ResourceDetectors) != 1 || s.ResourceDetectors[0].ResourceID != "r1" {
 		t.Fatalf("detectors = %+v", s.ResourceDetectors)

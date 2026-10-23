@@ -330,7 +330,10 @@ type wireStaff struct {
 }
 
 type wireDub struct {
-	LanName string `json:"lanName"`
+	LanCode   string `json:"lanCode"`
+	LanName   string `json:"lanName"`
+	Original  bool   `json:"original"`
+	SubjectID string `json:"subjectId"`
 }
 
 type wireDetector struct {
@@ -400,8 +403,17 @@ func (w wireSubject) toSubject() models.Subject {
 		SeasonCount:     w.seasonTotal(),
 	}
 	for _, d := range w.Dubs {
-		if d.LanName != "" {
-			s.Dubs = append(s.Dubs, d.LanName)
+		if d.LanName == "" {
+			continue
+		}
+		s.Dubs = append(s.Dubs, d.LanName)
+		if d.SubjectID != "" {
+			s.DubOptions = append(s.DubOptions, models.Dub{
+				SubjectID:    d.SubjectID,
+				LanguageName: d.LanName,
+				LanguageCode: d.LanCode,
+				Original:     d.Original,
+			})
 		}
 	}
 	for _, st := range w.StaffList {

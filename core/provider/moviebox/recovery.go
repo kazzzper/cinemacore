@@ -4,11 +4,12 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"sort"
 	"strconv"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/solo12345689/cinemacore/core/models"
 	"github.com/solo12345689/cinemacore/core/provider"
@@ -146,7 +147,7 @@ func manifestFromSignCookie(cookie string) (string, bool) {
 			if j := strings.IndexAny(token, ":;"); j >= 0 {
 				token = token[:j]
 			}
-			if decoded, ok := decodeBase64(token); ok {
+			if decoded, ok := decodeBase64(token); ok && !decoyURL(decoded) {
 				if mpd, ok := dashManifest(decoded); ok {
 					return mpd, true
 				}
@@ -159,7 +160,7 @@ func manifestFromSignCookie(cookie string) (string, bool) {
 		// (moviebox-tui adapt.rs:622-653).
 		if policy, ok := strings.CutPrefix(part, "CloudFront-Policy="); ok {
 			if decoded, ok := decodeBase64(cloudFrontAlphabet(policy)); ok {
-				if resource := cloudFrontResource(decoded); resource != "" {
+				if resource := cloudFrontResource(decoded); resource != "" && !decoyURL(resource) {
 					if mpd, ok := dashManifest(resource); ok {
 						return mpd, true
 					}
@@ -260,7 +261,9 @@ func (p *Provider) ugcBypass(ctx context.Context, id string, season, episode int
 	if first.BelongToCollection != nil && first.BelongToCollection.CollectionID != "" {
 		resources = p.ugcCollection(ctx, first.BelongToCollection.CollectionID, season, episode)
 	}
-	if len(resources) == 0 && first.UGCVideoID != "" {
+	// A lone video under a series subject is episode 1; for a later episode it
+	// is the same wrong-episode source the collection matcher refuses.
+	if len(resources) == 0 && episode <= 1 && first.UGCVideoID != "" {
 		var dl wireUGCDownload
 		if err := p.call(ctx, http.MethodGet, "/wefeed-mobile-bff/ugc/video/download?"+query("ugcVideoId", first.UGCVideoID), "", &dl); err == nil {
 			for _, it := range dl.Items {
@@ -272,8 +275,9 @@ func (p *Provider) ugcBypass(ctx context.Context, id string, season, episode int
 }
 
 // ugcCollection matches the requested episode inside a UGC collection by its
-// S{se}EP{ep}/E{ep} marker, falling back to the first item for episode 1, as
-// Kotlin does (LocalMovieBoxServer.kt:864-890).
+// S{se}EP{ep}/E{ep} marker, falling back to the first item only for episode 1
+// in a collection with no markers at all, as Kotlin does
+// (LocalMovieBoxServer.kt:864-890).
 func (p *Provider) ugcCollection(ctx context.Context, collectionID string, season, episode int) []wireUGCResource {
 	var dl wireUGCDownload
 	path := "/wefeed-mobile-bff/ugc/collection/download-list?" + query("collectionId", collectionID, "page", "1", "perPage", "50")
@@ -281,16 +285,118 @@ func (p *Provider) ugcCollection(ctx context.Context, collectionID string, seaso
 		return nil
 	}
 	se, ep := targetEpisode(season, episode)
+	var bare []wireUGCResource
+	bareSet := false
 	for _, it := range dl.Items {
-		hay := strings.ToUpper(it.EpTitle + " " + it.Title)
-		if strings.Contains(hay, fmt.Sprintf("S%dEP%d", se, ep)) || strings.Contains(hay, fmt.Sprintf("E%d", ep)) {
+		switch ugcMarkerRank(it.EpTitle, it.Title, se, ep) {
+		case 2:
 			return it.Resources
+		case 1:
+			// Remembered, not returned: a later item may name the season and
+			// episode exactly and outrank a bare episode marker.
+			if !bareSet {
+				bare, bareSet = it.Resources, true
+			}
 		}
 	}
-	if ep == 1 && len(dl.Items) > 0 {
+	if bareSet {
+		return bare
+	}
+	marked := false
+	for _, it := range dl.Items {
+		if ugcHasEpisodeMarker(it.EpTitle, it.Title) {
+			marked = true
+			break
+		}
+	}
+	if ep == 1 && !marked && len(dl.Items) > 0 {
 		return dl.Items[0].Resources
 	}
 	return nil
+}
+
+// ugcMarkerRank reports how strongly one collection item names the requested
+// episode: 2 for a fully qualified S{se}EP{ep}, 1 for a bare E{ep}, 0 for
+// neither. The dedicated epTitle outranks title, so a contradictory title
+// cannot lend the item a different number (MovieBoxRepository.swift:270-304).
+func ugcMarkerRank(epTitle, title string, season, episode int) int {
+	primary := strings.ToUpper(epTitle)
+	if ugcHasMarkerToken(primary) {
+		return ugcMarkerRankIn(primary, season, episode)
+	}
+	fallback := strings.ToUpper(title)
+	if !ugcHasMarkerToken(fallback) {
+		return 0
+	}
+	return ugcMarkerRankIn(fallback, season, episode)
+}
+
+func ugcMarkerRankIn(hay string, season, episode int) int {
+	if containsNumberToken(hay, "S"+strconv.Itoa(season)+"EP"+strconv.Itoa(episode), false) {
+		return 2
+	}
+	if containsNumberToken(hay, "E"+strconv.Itoa(episode), true) {
+		return 1
+	}
+	return 0
+}
+
+// ugcHasEpisodeMarker reports whether either field carries an episode marker.
+// Episode 1 may fall back to the first item, but only in a collection with no
+// markers: a marked collection without episode 1 is a mismatch, not an
+// invitation to play the first episode.
+func ugcHasEpisodeMarker(epTitle, title string) bool {
+	return ugcHasMarkerToken(strings.ToUpper(epTitle)) || ugcHasMarkerToken(strings.ToUpper(title))
+}
+
+func ugcHasMarkerToken(hay string) bool {
+	for i, r := range hay {
+		if r != 'E' {
+			continue
+		}
+		rest := hay[i+1:]
+		if strings.HasPrefix(rest, "P") {
+			rest = rest[1:]
+		}
+		if rest == "" {
+			continue
+		}
+		if next, _ := utf8.DecodeRuneInString(rest); unicode.IsNumber(next) {
+			return true
+		}
+	}
+	return false
+}
+
+// containsNumberToken reports whether marker is a complete token: a longer
+// number after it names a different episode (E1 inside S1EP10) and a preceding
+// letter means it is part of a word. A digit may precede a bare E because
+// S1E2 spells the season directly before it
+// (MovieBoxRepository.swift:326-342).
+func containsNumberToken(hay, marker string, digitBefore bool) bool {
+	for search := 0; search <= len(hay)-len(marker); {
+		rel := strings.Index(hay[search:], marker)
+		if rel < 0 {
+			return false
+		}
+		start := search + rel
+		end := start + len(marker)
+		beforeOK := start == 0
+		if !beforeOK {
+			before, _ := utf8.DecodeLastRuneInString(hay[:start])
+			beforeOK = digitBefore || (!unicode.IsLetter(before) && !unicode.IsNumber(before))
+		}
+		afterOK := end >= len(hay)
+		if !afterOK {
+			after, _ := utf8.DecodeRuneInString(hay[end:])
+			afterOK = !unicode.IsNumber(after)
+		}
+		if beforeOK && afterOK {
+			return true
+		}
+		search = end
+	}
+	return false
 }
 
 func targetEpisode(season, episode int) (int, int) {
@@ -342,6 +448,14 @@ func (p *Provider) resourceStream(ctx context.Context, id string, season, episod
 	var out models.Stream
 	seen := map[string]struct{}{}
 	for _, it := range items {
+		// The live listing ignores se/ep, so select the requested episode here;
+		// a movie (both zero) keeps the whole list.
+		if episode > 0 && it.Ep != episode {
+			continue
+		}
+		if season > 0 && it.Se != season {
+			continue
+		}
 		if !usableURL(it.ResourceLink) {
 			continue
 		}
