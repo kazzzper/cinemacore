@@ -126,6 +126,42 @@ public struct PreparedSubtitle: Hashable, Sendable {
     }
 }
 
+/// Combining the two caption sources without losing a viewer's pick.
+///
+/// The provider and the community addon answer independently and either can land
+/// second. Replacing one list with the other is what made a chosen track vanish
+/// from the picker while it was still playing, so the merge keeps the list that
+/// is already on screen first and appends only what is genuinely new.
+public enum SubtitleTracks {
+    /// `existing` first, then whatever `incoming` adds.
+    ///
+    /// Order is deliberate: the existing list is what the picker is showing, and
+    /// re-sorting it under the viewer's finger on a late response would move the
+    /// row they are about to tap.
+    public static func merging(
+        _ existing: [SubtitleTrack],
+        with incoming: [SubtitleTrack]
+    ) -> [SubtitleTrack] {
+        var seen = Set(existing.map(\.id))
+        return existing + incoming.filter { seen.insert($0.id).inserted }
+    }
+
+    /// The track a fresh playback should start on.
+    ///
+    /// A dub already speaks the requested language, so an original-language
+    /// caption is not a default there — the picker still offers it. `chosen`
+    /// being non-nil means the viewer has picked and the answer is never a new
+    /// default.
+    public static func defaultTrack(
+        in tracks: [SubtitleTrack],
+        isOriginalAudio: Bool,
+        chosen: SubtitleTrack?
+    ) -> SubtitleTrack? {
+        guard chosen == nil, isOriginalAudio else { return chosen }
+        return tracks.first
+    }
+}
+
 /// Writes converted caption tracks to a cache directory.
 ///
 /// Kept free of AVFoundation so it runs (and is tested) on Linux.
@@ -142,26 +178,93 @@ public struct SubtitleCache: Sendable {
 
     /// A stable on-disk name, so repeated playback reuses the converted file
     /// instead of re-fetching and re-converting.
+    ///
+    /// Provider tracks are signed URLs hundreds of characters long, which
+    /// exceeds the filesystem's 255-byte name limit when used verbatim. The
+    /// language keeps the name readable; the FNV-1a digest of the track id keeps
+    /// it unique without a random UUID, so the same track always maps to the
+    /// same file across launches.
     public func fileURL(for track: SubtitleTrack) -> URL {
-        let stem = track.id
-            .replacingOccurrences(of: "/", with: "-")
-            .replacingOccurrences(of: ":", with: "-")
-        return directory.appendingPathComponent("\(stem).vtt")
+        directory.appendingPathComponent(Self.fileName(for: track))
     }
 
     /// Returns a WebVTT file URL for `track`, converting and caching as needed.
+    ///
+    /// A cache that cannot be read or written falls back to the temporary
+    /// directory: a caption track that is slow or unavailable is still better
+    /// than silently rendering nothing.
     @discardableResult
     public func prepare(track: SubtitleTrack, contents: String) throws -> URL {
         let fileManager = FileManager.default
         let destination = fileURL(for: track)
-        if fileManager.fileExists(atPath: destination.path) {
+        if Self.isUsableCacheFile(at: destination, fileManager: fileManager) {
             return destination
         }
-        try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+
         let body = track.needsConversion
             ? SubtitleConverter.webVTT(fromSRT: contents)
             : contents
-        try body.write(to: destination, atomically: true, encoding: .utf8)
-        return destination
+
+        do {
+            try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+            // An empty or malformed leftover must not keep poisoning playback.
+            if fileManager.fileExists(atPath: destination.path) {
+                try? fileManager.removeItem(at: destination)
+            }
+            try body.write(to: destination, atomically: true, encoding: .utf8)
+            return destination
+        } catch {
+            return try Self.writeFallback(body, fileName: destination.lastPathComponent)
+        }
+    }
+
+    /// Language plus digest: at most 32 ASCII characters, a hyphen and 16 hex
+    /// digits, so the component stays far below the 255-byte limit.
+    static func fileName(for track: SubtitleTrack) -> String {
+        "\(languageStem(track.language))-\(String(fnv1a64(track.id), radix: 16)).vtt"
+    }
+
+    /// Keeps a readable prefix while dropping path separators, punctuation and
+    /// non-ASCII scalars that a filesystem or archive could treat specially.
+    private static func languageStem(_ language: String) -> String {
+        var stem = ""
+        for scalar in language.unicodeScalars {
+            guard stem.count < 32 else { break }
+            if scalar.isASCII, CharacterSet.alphanumerics.contains(scalar) {
+                stem.unicodeScalars.append(scalar)
+            } else if scalar == "-" || scalar == "_" || scalar == " " || scalar == "." {
+                if !stem.isEmpty, stem.last != "-" { stem.append("-") }
+            }
+        }
+        let trimmed = stem.trimmingCharacters(in: CharacterSet(charactersIn: "-"))
+        return trimmed.isEmpty ? "sub" : trimmed
+    }
+
+    /// FNV-1a, 64-bit. Chosen because it is tiny, deterministic and dependency
+    /// free, and Linux tests must compile without CryptoKit.
+    static func fnv1a64(_ text: String) -> UInt64 {
+        var hash: UInt64 = 0xcbf2_9ce4_8422_2325
+        for byte in text.utf8 {
+            hash ^= UInt64(byte)
+            hash = hash &* 0x0000_0100_0000_01b3
+        }
+        return hash
+    }
+
+    /// Empty, unreadable or non-WebVTT files are treated as absent so `prepare`
+    /// rewrites them instead of handing the player a broken track.
+    private static func isUsableCacheFile(at url: URL, fileManager: FileManager) -> Bool {
+        guard fileManager.fileExists(atPath: url.path),
+              var probe = try? String(contentsOf: url, encoding: .utf8)
+        else { return false }
+        if probe.hasPrefix("\u{FEFF}") { probe.removeFirst() }
+        return probe.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("WEBVTT")
+    }
+
+    private static func writeFallback(_ body: String, fileName: String) throws -> URL {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("cinemacore-\(fileName)")
+        try body.write(to: url, atomically: true, encoding: .utf8)
+        return url
     }
 }
