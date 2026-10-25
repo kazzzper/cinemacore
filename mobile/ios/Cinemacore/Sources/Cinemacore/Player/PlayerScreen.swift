@@ -191,11 +191,14 @@ struct PlayerScreen: View {
     // MARK: - Video
 
     private var playerBox: some View {
-        // Fullscreen drops the 16:9 constraint and takes every point offered;
-        // portrait fits the frame to the width.
-        playerSurface()
-            .aspectRatio(model.isFullscreen ? nil : 16.0 / 9.0, contentMode: .fit)
-            .frame(maxWidth: .infinity, maxHeight: model.isFullscreen ? .infinity : nil)
+        // A custom layout, not `.aspectRatio(nil)`: the latter derives its ratio
+        // from the surface's ideal size, which the controls change. Hiding the
+        // chrome then changed the player's ratio and slimmed the picture down.
+        // This layout gives fullscreen the whole proposal and portrait a fixed
+        // 16:9 box, without touching the surface's identity.
+        PlayerBoxLayout(isFullscreen: model.isFullscreen) {
+            playerSurface()
+        }
     }
 
     /// The stage keeps the chrome inside the safe area; only ``surfaceCanvas``
@@ -785,6 +788,39 @@ struct PlayerScreen: View {
             get: { downloadNotice != nil },
             set: { if !$0 { downloadNotice = nil } }
         )
+    }
+}
+
+/// Sizes the player independently of what its overlays currently measure.
+///
+/// Fullscreen takes the whole proposal; portrait is always 16:9 of the offered
+/// width. The surface stays a single subview across the change, so toggling the
+/// chrome cannot rebuild the `AVPlayerLayer`.
+private struct PlayerBoxLayout: SwiftUI.Layout {
+    let isFullscreen: Bool
+
+    func sizeThatFits(
+        proposal: ProposedViewSize,
+        subviews: Subviews,
+        cache: inout ()
+    ) -> CGSize {
+        let width = proposal.width ?? 0
+        let height = isFullscreen
+            ? proposal.height ?? width * 9 / 16
+            : width * 9 / 16
+        return CGSize(width: width, height: height)
+    }
+
+    func placeSubviews(
+        in bounds: CGRect,
+        proposal: ProposedViewSize,
+        subviews: Subviews,
+        cache: inout ()
+    ) {
+        let size = ProposedViewSize(width: bounds.width, height: bounds.height)
+        for subview in subviews {
+            subview.place(at: bounds.origin, proposal: size)
+        }
     }
 }
 

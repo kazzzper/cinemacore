@@ -379,6 +379,17 @@
       "acceptance": "TMDB_API_KEY > Info.plist > StreamHype published key; Settings explains the override; swift test + go test + xtool build green",
       "updatedAt": "2026-10-25T08:18:54.408Z",
       "links": []
+    },
+    {
+      "id": "T-029",
+      "title": "Hiding the player chrome must not resize the landscape picture",
+      "status": "review",
+      "module": "ios",
+      "owner": "opencode",
+      "deps": [],
+      "acceptance": "A tap hides or shows the HUD without changing the picture bounds or aspect; portrait stays 16:9; surface identity is preserved; xtool build green",
+      "updatedAt": "2026-10-25T09:33:14.466Z",
+      "links": []
     }
   ]
 }

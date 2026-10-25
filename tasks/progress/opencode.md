@@ -204,3 +204,5 @@ PiP behaviour remain unverified because this host has no simulator or device.
 - 2026-10-25T08:17:59.955Z — claimed T-028 — StreamHype works without a hand-pasted TMDB key
 - 2026-10-25T08:18:00.031Z — updated T-028 -> review: TMDB_API_KEY > Info.plist > StreamHype public key; Settings/README/ADR updated; 411 Swift tests, go test, xtool build green; live /configuration returns 200; device not available
 - 2026-10-25T08:18:54.409Z — done T-028: TMDB_API_KEY > Info.plist > StreamHype public key; Settings/README/ADR updated; live /configuration 200; 411 Swift tests, go test, xtool build green; device catalog load unverified
+- 2026-10-25T09:33:14.425Z — claimed T-029 — Hiding the player chrome must not resize the landscape picture
+- 2026-10-25T09:33:14.467Z — updated T-029 -> review: player box now uses a custom Layout: fullscreen takes the whole proposal, portrait stays 16:9, and overlays can no longer drive the surface's ideal ratio; xtool build green; device tap test pending
