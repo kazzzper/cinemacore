@@ -35,6 +35,13 @@ struct PlayerScreen: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.scenePhase) private var scenePhase
+    /// A phone held sideways is the player's wide layout. Without this the
+    /// screen stays portrait-shaped in landscape, and the 16:9 box sharing the
+    /// stack with the details scroll squeezes the picture into a thin band.
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
+    /// True while fullscreen came from turning the phone rather than from the
+    /// button, so turning it back can undo that and nothing else.
+    @State private var fullscreenFromRotation = false
 
     init(request: PlaybackRequest, app: AppModel) {
         self.request = request
@@ -105,6 +112,19 @@ struct PlayerScreen: View {
         }
         .task { await model.start() }
         .onDisappear { model.stop() }
+        // The rotation the viewer performed is the only request needed: asking
+        // for it again would fight a window that is already landscape.
+        // `initial` so a player opened while the phone is already sideways
+        // starts in the wide layout instead of the portrait one.
+        .onChange(of: verticalSizeClass, initial: true) { _, size in
+            if size == .compact, !model.isFullscreen {
+                fullscreenFromRotation = true
+                model.setFullscreen(true, requestRotation: false)
+            } else if size == .regular, fullscreenFromRotation {
+                fullscreenFromRotation = false
+                model.setFullscreen(false, requestRotation: false)
+            }
+        }
         // `.inactive` as well as `.background`: the app is no longer the thing
         // the viewer is watching, and PiP is the only carrier that should keep
         // the picture alive.
@@ -579,6 +599,9 @@ struct PlayerScreen: View {
                 model.isFullscreen ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right",
                 label: model.isFullscreen ? "Exit fullscreen" : "Enter fullscreen"
             ) {
+                // An explicit pick owns the mode from here: a later turn of the
+                // phone must not silently undo it.
+                fullscreenFromRotation = false
                 model.toggleFullscreen()
             }
         }

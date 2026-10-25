@@ -200,3 +200,7 @@ PiP behaviour remain unverified because this host has no simulator or device.
 - `xtool dev build` — `Build complete! (21.09 secs)`, app written to `xtool/Cinemacore.app`.
 - `swift test` — 354 tests / 55 suites; 352 passed. The two failures are the pre-existing
   `HEVCRewriteTests.swift` HTTP cases at lines 134 and 164, unrelated to this task.
+- 2026-10-25T08:14:28.507Z — registered (opencode)
+- 2026-10-25T08:17:59.955Z — claimed T-028 — StreamHype works without a hand-pasted TMDB key
+- 2026-10-25T08:18:00.031Z — updated T-028 -> review: TMDB_API_KEY > Info.plist > StreamHype public key; Settings/README/ADR updated; 411 Swift tests, go test, xtool build green; live /configuration returns 200; device not available
+- 2026-10-25T08:18:54.409Z — done T-028: TMDB_API_KEY > Info.plist > StreamHype public key; Settings/README/ADR updated; live /configuration 200; 411 Swift tests, go test, xtool build green; device catalog load unverified

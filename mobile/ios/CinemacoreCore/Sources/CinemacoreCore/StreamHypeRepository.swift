@@ -17,19 +17,30 @@ import FoundationNetworking
 /// spelling the Go core uses, so a history row or watchlist entry written by a
 /// gateway session still resolves here.
 public struct StreamHypeCatalogRepository: CatalogRepository, @unchecked Sendable {
+    /// StreamHype's own web client ships this v3 key in its public bundle
+    /// (docs/streamhype-network-map.md §2). It is a published client key, not
+    /// a credential of this project: it is only the last-resort fallback, so a
+    /// user or deployment key still wins, and replacing it needs no client
+    /// change.
+    public static let publicAPIKey = "90b2cae8d7161e8ba0f3836240d7d352"
+
     /// Where a deployment's TMDB v3 key comes from, in precedence order.
     ///
-    /// `TMDB_API_KEY` in the environment (tests, simulator runs from a shell)
-    /// then `TMDBAPIKey` in the app's `Info.plist`. There is deliberately no
-    /// bundled default: the key belongs to whoever registers the app with TMDB,
-    /// and a copy checked into source cannot be rotated without a release — or
-    /// revoked from under every installed copy at once.
+    /// `TMDB_API_KEY` in the environment (tests, simulator runs from a shell),
+    /// then `TMDBAPIKey` in the app's `Info.plist`, then
+    /// ``publicAPIKey``. The fallback is what lets StreamHype work out of the
+    /// box; a user-registered key remains the way to use one's own TMDB quota.
     public static var configuredAPIKey: String? {
-        let candidates = [
-            ProcessInfo.processInfo.environment["TMDB_API_KEY"],
-            Bundle.main.object(forInfoDictionaryKey: "TMDBAPIKey") as? String,
-        ]
-        for candidate in candidates {
+        resolvedAPIKey(
+            environment: ProcessInfo.processInfo.environment["TMDB_API_KEY"],
+            infoPlist: Bundle.main.object(forInfoDictionaryKey: "TMDBAPIKey") as? String
+        )
+    }
+
+    /// Pure precedence rule, so the fallback can be covered without touching
+    /// the process environment or the host app's plist.
+    static func resolvedAPIKey(environment: String?, infoPlist: String?) -> String? {
+        for candidate in [environment, infoPlist, publicAPIKey] {
             let key = candidate?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             if !key.isEmpty { return key }
         }

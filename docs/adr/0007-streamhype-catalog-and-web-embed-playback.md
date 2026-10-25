@@ -33,11 +33,11 @@ settles is what playback is allowed to be.
 3. **Native protocol replay is not attempted.** Re-deriving the token mint, WASM decrypt and host rotation
    is a permanent maintenance liability against a backend that rotates to break exactly that, and the
    embed is the path StreamHype itself keeps working.
-4. **The TMDB key is configuration, never a committed default.** The gateway reads `TMDB_API_KEY`
-   (`CINEMACORE_PROVIDER=streamhype` fails fast without it); the iOS app reads `TMDB_API_KEY` from the
-   environment, then `TMDBAPIKey` in `Info.plist`, and reports the missing key in Settings instead of
-   serving an empty catalog. A key checked into source cannot be rotated without a release, and it would
-   be the registering account's key, not the user's.
+4. **A user key is configuration, with StreamHype's published client key as the fallback.** The gateway
+   reads `TMDB_API_KEY` (`CINEMACORE_PROVIDER=streamhype` fails fast without it). The iOS app reads
+   `TMDB_API_KEY` from the environment, then `TMDBAPIKey` in `Info.plist`, then the public key StreamHype
+   ships in its own web bundle, so the source works out of the box. A deployment or user key still wins,
+   which keeps the fallback replaceable without an app update and gives each user their own TMDB quota.
 5. **The provider is opt-in.** `CINEMACORE_PROVIDER` selects `moviebox` (default), `streamhype` or `all`;
    the app's source switch gains a `streamHype` mode. The deployed gateway's shape does not change
    unintentionally, and merging sources stays a deliberate act.

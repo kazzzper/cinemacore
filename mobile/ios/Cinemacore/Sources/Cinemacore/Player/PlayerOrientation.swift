@@ -11,28 +11,34 @@ import UIKit
 /// since iOS 16.
 @MainActor
 enum PlayerOrientation {
-    private(set) static var isFullscreen = false
-
     /// The mask the app delegate reports to UIKit.
     ///
-    /// iPad keeps every orientation in both modes: a tablet player fills the
-    /// screen without having to rotate, and locking the app to landscape would
-    /// break Split View and Stage Manager expectations.
+    /// Fullscreen deliberately does **not** narrow this to landscape. Turning
+    /// the phone is how a viewer reaches the wide layout, so the mask has to
+    /// keep permitting portrait — narrowing it is what refused the turn back and
+    /// left the app sideways. The landscape request below is what turns the
+    /// picture, not the mask.
+    ///
+    /// iPad keeps every orientation: a tablet player fills the screen without
+    /// having to rotate, and locking it would break Split View and Stage Manager
+    /// expectations.
     static var supportedOrientations: UIInterfaceOrientationMask {
         guard UIDevice.current.userInterfaceIdiom != .pad else { return .all }
-        return isFullscreen ? .landscape : .allButUpsideDown
+        return .allButUpsideDown
     }
 
-    /// Applies the mode and, where the platform expects it, asks for a rotation.
+    /// Asks the window to turn, and never pretends it succeeded.
     ///
     /// The request can be refused — a rotation lock, an inactive scene, or a
     /// window that is mid-transition — and that is a normal answer. Fullscreen
     /// still fills whatever orientation the device is in, so a refusal must not
     /// revert the state or trap.
-    static func setFullscreen(_ value: Bool) {
-        isFullscreen = value
-        guard let scene = activeScene else { return }
-        scene.keyWindow?.rootViewController?.setNeedsUpdateOfSupportedInterfaceOrientations()
+    ///
+    /// `requestRotation` is false when the phone was turned by hand: the window
+    /// is already landscape, and asking again for a rotation the device has
+    /// performed is how a rotation ends up half-applied.
+    static func setFullscreen(_ value: Bool, requestRotation: Bool = true) {
+        guard requestRotation, let scene = activeScene else { return }
         guard UIDevice.current.userInterfaceIdiom != .pad else { return }
         scene.requestGeometryUpdate(.iOS(interfaceOrientations: value ? .landscape : .portrait)) { _ in
             // Deliberately ignored: see the refusal note above.

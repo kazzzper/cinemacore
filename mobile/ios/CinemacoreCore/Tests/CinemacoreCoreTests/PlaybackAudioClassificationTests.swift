@@ -77,4 +77,35 @@ struct PlaybackAudioClassificationTests {
         // An unknown but unremarkable entry is offered rather than dropped.
         #expect(PlaybackSourcePolicy.isVideoStream(format: nil, codec: nil, url: nil))
     }
+
+    /// iOS has no DASH support, while the gateway builds an `index.mpd` tree
+    /// whenever its signed prefix is one. Offering that rung is what made a
+    /// quality pick go blank and then "fall back" to a lower label: the pick
+    /// handed `AVPlayer` a manifest it cannot open, and the recovery moved on.
+    @Test("a DASH manifest is never offered as a video source")
+    func dashIsUnplayable() {
+        let dash = StreamRendition(
+            quality: "720p",
+            url: "https://cdn.test/dash/title/index.mpd"
+        )
+        let hls = StreamRendition(
+            quality: "360p",
+            url: "https://cdn.test/hls/title/index.m3u8"
+        )
+
+        #expect(PlaybackSourcePolicy.isUnplayableContainer(url: URL(string: dash.url)!))
+        #expect(!PlaybackSourcePolicy.isVideoCapable(dash))
+        #expect(PlaybackSourcePolicy.isVideoCapable(hls))
+
+        let candidates = PlaybackSourcePolicy.videoCandidates([dash, hls])
+        #expect(candidates.map(\.quality) == ["360p"])
+        #expect(PlaybackSourcePolicy.preferred([dash, hls])?.quality == "360p")
+
+        // The same rung must not be reached through the fallback ladder either.
+        #expect(PlaybackSourcePolicy.fallback(from: hls, in: [dash, hls]) == nil)
+        // A provider-side entry is dropped before a rendition exists.
+        #expect(!PlaybackSourcePolicy.isVideoStream(
+            format: "DASH", codec: "h264", url: dash.url
+        ))
+    }
 }

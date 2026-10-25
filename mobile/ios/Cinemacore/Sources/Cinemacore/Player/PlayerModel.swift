@@ -881,11 +881,14 @@ final class PlayerModel {
     /// those two headers and nothing else: no signature headers, by contract.
     private static let headerFieldsKey = "AVURLAssetHTTPHeaderFieldsKey"
 
-    /// A quality pick is a hint, never a different URL: the provider serves one
-    /// URL for every rendition, so the choice becomes a peak-bit-rate ceiling
-    /// for the adaptive ladder. `Auto` leaves it unlimited.
+    /// A quality pick is a hint, never a different URL: the gateway repeats one
+    /// URL under every label, so the choice becomes a peak-bit-rate ceiling for
+    /// the adaptive ladder. `Auto` — and anything that is not an HLS ladder —
+    /// leaves it unlimited: capping a progressive file whose own bitrate sits
+    /// above the ceiling is how a pick ends up stalling on a black frame.
     private static func bitrateHint(for stream: StreamRendition) -> Double {
-        switch stream.resolutionRank {
+        guard stream.urlValue?.pathExtension.lowercased() == "m3u8" else { return 0 }
+        return switch stream.resolutionRank {
         case 2160...: 16_000_000
         case 1440...: 10_000_000
         case 1080...: 6_000_000
@@ -1433,14 +1436,18 @@ final class PlayerModel {
 
     // MARK: - Presentation
 
-    /// Fullscreen is explicit state, never derived from the device orientation:
-    /// with the rotation lock on, an orientation-derived rule would leave the
-    /// video in a letterbox the user could not escape.
-    func setFullscreen(_ value: Bool) {
+    /// Fullscreen is explicit state, so a rotation lock cannot leave the video
+    /// in a letterbox the viewer has no way out of. The screen is what decides
+    /// to follow a turned phone, and it does so through this: a derived rule
+    /// inside the model would fight the button.
+    ///
+    /// `requestRotation` is false when the phone itself turned: the window is
+    /// already landscape, so only the layout has to follow.
+    func setFullscreen(_ value: Bool, requestRotation: Bool = true) {
         guard value != isFullscreen else { return }
         isFullscreen = value
         revealControls()
-        PlayerOrientation.setFullscreen(value)
+        PlayerOrientation.setFullscreen(value, requestRotation: requestRotation)
     }
 
     func toggleFullscreen() {

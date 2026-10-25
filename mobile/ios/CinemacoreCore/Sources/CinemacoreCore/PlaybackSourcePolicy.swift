@@ -39,9 +39,25 @@ public enum PlaybackSourcePolicy {
         "mlp", "truehd", "pcm", "lpcm", "amr", "wmav2",
     ]
 
+    /// Manifest containers `AVPlayer` cannot open.
+    ///
+    /// The gateway answers the same title from an HLS tree, a DASH tree, or a
+    /// plain file — its signed prefix decides which. The Go core keeps DASH
+    /// because the terminal client renders it through mpv, but iOS has no DASH
+    /// support at all: an `.mpd` item fails after it has already been handed to
+    /// the player, which reads to the viewer as a quality that "goes blank" and
+    /// then silently drops to whatever else the payload holds.
+    private static let unplayableExtensions: Set<String> = ["mpd"]
+
     /// Whether the URL itself points at an audio container.
     public static func isAudioOnly(url: URL) -> Bool {
         audioOnlyExtensions.contains(url.pathExtension.lowercased())
+    }
+
+    /// Whether the URL names a container this platform cannot play, whatever it
+    /// claims to carry.
+    public static func isUnplayableContainer(url: URL) -> Bool {
+        unplayableExtensions.contains(url.pathExtension.lowercased())
     }
 
     /// Whether a provider label names a soundtrack rather than a video track.
@@ -105,14 +121,16 @@ public enum PlaybackSourcePolicy {
     public static func isVideoStream(format: String?, codec: String?, url: String?) -> Bool {
         if isAudioOnly(format: format) || isAudioOnly(codec: codec) { return false }
         guard let url, let parsed = URL(string: url) else { return true }
-        return !isAudioOnly(url: parsed)
+        return !isAudioOnly(url: parsed) && !isUnplayableContainer(url: parsed)
     }
 
     /// A rendition is a candidate only when both the bytes and the label say
     /// "video"; either one being audio-only is enough to keep the player out.
     public static func isVideoCapable(_ rendition: StreamRendition) -> Bool {
         guard let url = rendition.urlValue else { return false }
-        return !isAudioOnly(url: url) && !isAudioOnly(label: rendition.quality)
+        return !isAudioOnly(url: url)
+            && !isAudioOnly(label: rendition.quality)
+            && !isUnplayableContainer(url: url)
     }
 
     /// Lowercases and strips the separators the gateway sprinkles through

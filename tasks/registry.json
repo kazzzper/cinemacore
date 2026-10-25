@@ -26,7 +26,7 @@
       "harness": "opencode",
       "model": null,
       "startedAt": "2026-10-17T21:31:24.602Z",
-      "lastSeen": "2026-10-20T10:26:11.025Z"
+      "lastSeen": "2026-10-25T08:14:28.506Z"
     },
     {
       "id": "dsh-player",
@@ -356,6 +356,28 @@
       "deps": [],
       "acceptance": "A finished download stores WebVTT tracks beside the file and seeds the picker offline; volume on the right and brightness on the left via vertical drags with an auto-hiding readout; a download row opens its season; swift test + xtool build green",
       "updatedAt": "2026-10-23T10:05:54.236Z",
+      "links": []
+    },
+    {
+      "id": "T-027",
+      "title": "Landscape must play, and a DASH rung must never blank a quality pick",
+      "status": "done",
+      "module": "ios",
+      "owner": "buffy",
+      "deps": [],
+      "acceptance": "Turning the phone fills the display; DASH renditions filtered; go+swift green",
+      "updatedAt": "2026-10-25T08:12:56.686Z",
+      "links": []
+    },
+    {
+      "id": "T-028",
+      "title": "StreamHype works without a hand-pasted TMDB key",
+      "status": "done",
+      "module": "ios",
+      "owner": "opencode",
+      "deps": [],
+      "acceptance": "TMDB_API_KEY > Info.plist > StreamHype published key; Settings explains the override; swift test + go test + xtool build green",
+      "updatedAt": "2026-10-25T08:18:54.408Z",
       "links": []
     }
   ]

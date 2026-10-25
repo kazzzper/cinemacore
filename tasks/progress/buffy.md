@@ -4,6 +4,53 @@
 - 2026-10-23 — added + claimed T-022 — StreamHype source: TMDB catalog + web-embed playback
 - 2026-10-23 — added + claimed T-023 — captions must not resize the picture; downloads must queue a video rung
 
+## T-027 — a slim picture in landscape, and a 720p pick that went blank
+
+**Reported:** turning the phone sideways squashes the video into a thin band instead of filling the screen;
+switching quality mid-episode to 720p gives a blank picture and then "falls to 360p".
+
+### Root causes
+1. Fullscreen was the *button's* state alone. Turning the phone rotated the window but left
+   `isFullscreen == false`, so the screen kept the portrait stack — a 16:9 box sharing a `VStack` with the
+   details scroll. In landscape there is no height left for that box, and the picture was squeezed into
+   whatever remained.
+2. `PlayerOrientation.supportedOrientations` narrowed the mask to `.landscape` while fullscreen, so once a
+   rotation had happened the app could not turn portrait again. Turning the phone back was refused, which is
+   the other way to end up with a player that will not sit right.
+3. A quality pick can select a **DASH** rendition. The gateway builds `index.mpd` whenever its signed prefix
+   is a `/dash/` tree (`core/provider/moviebox/recovery.go`), and the Go core keeps that rung for the
+   terminal client, which renders it through mpv. iOS has no DASH support: the item fails after it is
+   already on screen, the picture goes blank, and recovery moves on to the next URL — the HLS rung, usually
+   a lower label. That is the "720p blank, falls to 360p" sequence.
+
+### Changes
+- `PlayerScreen` watches `verticalSizeClass` (with `initial: true`, so a player opened sideways starts wide)
+  and calls `setFullscreen(_, requestRotation: false)` — the phone has already turned, and asking again is
+  how a rotation ends up half-applied. Turning back to portrait leaves fullscreen again, but only when the
+  rotation is what entered it; the button clears that flag so an explicit pick is not undone.
+- `PlayerOrientation` returns `.allButUpsideDown` in both modes. The geometry request is what turns the
+  picture, not the mask, and a mask that forbids portrait traps the app sideways. The stored `isFullscreen`
+  and the `setNeedsUpdateOfSupportedInterfaceOrientations` call went with it: neither had a job left.
+- `PlaybackSourcePolicy.isUnplayableContainer(url:)` drops `.mpd` at both gates — the provider-side
+  `isVideoStream` and `isVideoCapable` — so a DASH rung never reaches the quality sheet, the preferred
+  source, or the fallback ladder.
+- `PlayerModel.bitrateHint` only caps an HLS ladder. The gateway repeats one URL under every label, so a
+  pick on a progressive file was a `preferredPeakBitRate` ceiling above the file's own bitrate, which is a
+  stall rather than a quality change.
+
+### Also fixed
+- `streamhype.Health` reported "TMDB request error" for a refused key: `get` returns an error for every
+  non-200, so the 401 branch below it was unreachable. The status is now inspected first.
+
+### Verification
+- `go build ./... && go test ./... -race`: green (`streamhype` 401 test asserts the note, not the dump).
+- `swift test`: **411 tests / 62 suites green** (new: a DASH manifest is never a candidate, never preferred,
+  never reached through fallback, and is rejected at the provider gate).
+- `xtool dev build`: **BUILD OK, no warnings**.
+- **Not device-verified.** The rotation behaviour and the 720p rung are only settleable on a phone; the DASH
+  filter is exercised by tests but whether *this* episode's 720p was the DASH tree is inferred from the
+  provider's construction, not from a captured URL.
+
 ## T-026 — captions saved with a download, edge-swipe levels, and a way into the season
 
 **Asked:** downloaded episodes should come with their subtitles; the volume slider belongs on the right of
@@ -209,3 +256,6 @@ iOS
 - 2026-10-23T09:33:48.754Z — updated T-025 -> review: local hev1 repair in place + rejected-copy wording; swift test 401 green, xtool build clean
 - 2026-10-23T10:05:04.548Z — claimed T-026 — Downloads carry their captions, and the player's levels live on the edges
 - 2026-10-23T10:05:54.237Z — updated T-026 -> review: captions stored with downloads, edge-swipe volume/brightness with auto-hiding readout, download row opens its season. swift test 409 green, xtool build clean
+- 2026-10-25T08:12:56.516Z — claimed T-027 — Landscape must play, and a DASH rung must never blank a quality pick
+- 2026-10-25T08:12:56.611Z — updated T-027: player takes the wide layout when the phone turns; mask no longer forbids portrait; DASH rungs dropped for AVPlayer; streamhype 401 health fixed
+- 2026-10-25T08:12:56.687Z — done T-027

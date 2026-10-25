@@ -87,6 +87,26 @@ struct StreamHypeRepositoryTests {
         StreamHypeStubURLProtocol.reset()
     }
 
+    // MARK: - API key
+
+    @Test func apiKeyPrecedenceAndFallback() throws {
+        #expect(
+            StreamHypeCatalogRepository.resolvedAPIKey(
+                environment: "  env-key  ", infoPlist: "plist-key"
+            ) == "env-key"
+        )
+        #expect(
+            StreamHypeCatalogRepository.resolvedAPIKey(
+                environment: "   ", infoPlist: "  plist-key "
+            ) == "plist-key"
+        )
+        let fallback = try #require(
+            StreamHypeCatalogRepository.resolvedAPIKey(environment: nil, infoPlist: "")
+        )
+        #expect(fallback == StreamHypeCatalogRepository.publicAPIKey)
+        #expect(!fallback.isEmpty)
+    }
+
     // MARK: - embed URL builder
 
     @Test func embedURLOnMoviesAndSeries() throws {

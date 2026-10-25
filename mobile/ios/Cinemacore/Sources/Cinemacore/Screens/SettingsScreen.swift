@@ -110,9 +110,7 @@ struct SettingsScreen: View {
         case .gateway:
             "The gateway is your own Cinemacore server (go run ./cmd/cinemacore)."
         case .streamHype:
-            StreamHypeCatalogRepository.isConfigured
-                ? "Catalog from TMDB; playback opens the StreamHype web player in-app. Downloads and offline play are not offered on this source."
-                : "StreamHype needs a TMDB API key: set TMDBAPIKey in Info.plist (free from themoviedb.org) or TMDB_API_KEY in the environment. Until then the bundled demo catalog is shown."
+            "Catalog from TMDB; playback opens the StreamHype web player in-app. Downloads and offline play are not offered on this source. StreamHype's published TMDB key is used by default; set TMDBAPIKey in Info.plist or TMDB_API_KEY in the environment to use your own."
         case .builtIn:
             "Built-in talks to the catalog directly — no server required."
         }
