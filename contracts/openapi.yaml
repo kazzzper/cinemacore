@@ -213,7 +213,6 @@ components:
       properties:
         code: { type: string }
         message: { type: string }
-        detail: { type: object, additionalProperties: true }
     Subject:
       type: object
       required: [id, title]
@@ -222,7 +221,7 @@ components:
         title: { type: string }
         poster: { type: string }
         year: { type: integer }
-        rating: { type: number }
+        rating: { type: number, format: double }
         kind: { type: string }
         synopsis: { type: string }
         genres:
