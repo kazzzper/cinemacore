@@ -1,136 +1,58 @@
-<div align="center">
+# Cinemacore
 
-# 🎬 Cinemacore
+A single Go core, a REST API, and native clients for one movie product. Signing, sessions, providers, catalog, caching and downloads live once in `core/`; every surface is thin, and each client talks to the same contract.
 
-**One movie product. One Go core. Native clients everywhere.**
+## What it does
 
-[![Go](https://img.shields.io/badge/Go-1.27-00ADD8?logo=go&logoColor=white)](https://go.dev)
-[![Swift](https://img.shields.io/badge/Swift-6.4-F05138?logo=swift&logoColor=white)](https://swift.org)
-[![Kotlin](https://img.shields.io/badge/Kotlin-Compose-7F52FF?logo=kotlin&logoColor=white)](https://kotlinlang.org)
-[![OpenAPI](https://img.shields.io/badge/OpenAPI-3.1-6BA539?logo=openapiinitiative&logoColor=white)](contracts/openapi.yaml)
-[![License](https://img.shields.io/badge/License-TBD-lightgrey)](#license)
+- **Gateway** — `server/` exposes a REST API over `core/`: home rails, search, detail, seasons, play (resolved streams + subtitles).
+- **Signing** — HMAC-MD5 canonical-string request signing, pinned by golden vectors tested in both Go and Swift.
+- **Native clients** — SwiftUI + AVPlayer on iOS, Jetpack Compose + Media3 on Android, Rust TUI planned.
+- **Offline** — direct progressive downloads with captions saved beside them, resumable.
+- **Testable on Linux** — iOS logic ships as a pure Foundation package; 411 Swift tests + the Go race suite run on the host.
 
-The gateway logic — signing, sessions, providers, catalog, caching, downloads — lives **once**, in `core/`.
-Every surface is thin. The iOS app talks to the same contract the TUI will.
-
-[Quickstart](#quickstart) · [Architecture](#architecture) · [Status](#status) · [Contributing](#contributing)
-
-</div>
-
----
-
-## ✨ Features
-
-- **Single source of truth** — `contracts/openapi.yaml` drives every client; a generated Kotlin client ships with the Android app.
-- **Signed upstream access** — HMAC-MD5 canonical-string signing, pinned by golden vectors tested in **both** Go and Swift.
-- **Real catalog, real playback** — home, search, seasons and play return live gateway data; progressive-MP4 URLs, subtitles, resume, PiP.
-- **Offline-first downloads** — direct progressive files, captions saved beside them, resumable.
-- **Native everywhere** — SwiftUI + AVPlayer on iOS, Jetpack Compose + Media3 on Android, Rust TUI on the roadmap.
-- **Testable on Linux** — pure Foundation core for iOS; 411 Swift tests + Go race suite run on the host.
-- **Contract-first** — provider / signing / cache / download logic exists once, in `core/`. Surfaces stay thin.
-
-## 📸 Preview
-
-> Screenshots and a demo GIF land here once a device build ships. Builds and tests are the current evidence.
-
-| iOS (xtool) | Android (Compose) |
-|---|---|
-| `xtool/Cinemacore.app` | `:app:assembleDebug` |
-
----
-
-## 🏗️ Architecture
-
-```
-core/                    Go, pure — imports nothing from server/, mobile/ or tools/
-  sign/                  Gateway signing (HMAC-MD5 canonical string), golden-vector pinned
-  session/               Signed HTTP client: host failover, guest token, response cache
-  provider/moviebox/     MovieBox adapter
-  catalog/               Catalog assembly
-  store/cache/           Response cache
-server/                  REST API over the core
-cmd/cinemacore/          Server entry point
-contracts/               openapi.yaml (wire API) · signing-vectors.json (signing)
-mobile/ios/              CinemacoreCore (pure) + Cinemacore (SwiftUI app)
-mobile/android/          Kotlin/Compose client · generated OpenAPI types · Media3
-tools/tui/               Rust terminal client (placeholder)
-tasks/                   Harness-agnostic work board (Node)
-```
-
-Why iOS is two packages: there is no iOS Simulator on Linux, and `swift test` in a single package
-tries to build the SwiftUI target and dies with `no such module 'SwiftUI'`. Splitting them makes the
-boundary compiler-enforced — `CinemacoreCore` cannot import SwiftUI even by accident — so models,
-signing, networking and view models stay testable on the host. See `docs/adr/0004`.
-
----
-
-## 📊 Status
-
-| Surface | State | Verified by |
-|---|---|---|
-| `core/` + `server/` | ✅ Builds, tests green. Live catalog works. | `go build ./... && go test ./...` |
-| `mobile/ios/` | ✅ Builds to `Cinemacore.app`. 5 tabs, AVPlayer, PiP, downloads. | `swift test` (411 tests) + `xtool dev build` |
-| `mobile/android/` | 🚧 Port in progress. Toolchain green. | `./gradlew :app:assembleDebug` + `:app:testDebugUnitTest` |
-| `tools/tui/` | 📋 Placeholder | — |
-
-**Honest caveats:** neither mobile app has ever run on a device. Builds and tests are the evidence.
-
----
-
-## 🚀 Quickstart
-
-### Go core + API
+## Quick start
 
 ```bash
-go build ./...
-go test ./...
+go build ./... && go test ./...
 go run ./cmd/cinemacore                 # :8080
 curl -s localhost:8080/health
+```
+
+```bash
+cd mobile/ios/CinemacoreCore && swift test
+cd mobile/android && ./gradlew :app:assembleDebug
 ```
 
 The gateway serves MovieBox by default. `CINEMACORE_PROVIDER` selects the source: `moviebox`,
 `streamhype` (TMDB catalog, needs `TMDB_API_KEY`) or `all` (merged search).
 
-### iOS (testable logic on Linux)
+## Status
 
-```bash
-cd mobile/ios/CinemacoreCore && swift test
+| Surface | State | Verified by |
+|---|---|---|
+| `core/` + `server/` | Builds, tests green. Live catalog works. | `go build ./... && go test ./...` |
+| `mobile/ios/` | Builds to `Cinemacore.app`. 5 tabs, AVPlayer, PiP, downloads. | `swift test` (411 tests) + `xtool dev build` |
+| `mobile/android/` | Port in progress. Toolchain green. | `./gradlew :app:assembleDebug` + `:app:testDebugUnitTest` |
+| `tools/tui/` | Placeholder | — |
+
+Neither mobile app has run on a device yet. Builds and tests are the evidence.
+
+## Architecture
+
+```
+core/        Go, pure — imports nothing from server/, mobile/ or tools/
+server/      REST API over the core
+contracts/   openapi.yaml (wire API) · signing-vectors.json (signing)
+mobile/ios/  CinemacoreCore (pure) + Cinemacore (SwiftUI app)
+mobile/android/  Kotlin/Compose · generated OpenAPI types · Media3
 ```
 
-### iOS (the app)
+iOS is split into two packages because there is no iOS Simulator on Linux: a single
+package's `swift test` tries to build the SwiftUI target and fails. Splitting makes the
+boundary compiler-enforced, so models, signing, networking and view models stay testable
+on the host. See `docs/adr/0004`.
 
-```bash
-cd mobile/ios/Cinemacore
-xtool dev build                         # -> xtool/Cinemacore.app
-xtool dev build -c release --ipa        # -> .ipa
-```
-
-### Android
-
-```bash
-cd mobile/android
-./gradlew :app:assembleDebug
-./gradlew :app:testDebugUnitTest
-```
-
-See [`ANDROID.md`](ANDROID.md) for one-time toolchain setup.
-
----
-
-## 🧪 Testing
-
-```bash
-go test ./... -race
-cd mobile/ios/CinemacoreCore && swift test
-cd mobile/android && ./gradlew :app:testDebugUnitTest
-```
-
-The signing contract is verified in **two languages**: both Go (`core/sign`) and Swift load
-`contracts/signing-vectors.json`, including 53 `resourceVectors` cases generated from the Go reference.
-
----
-
-## 📡 Wire API
+## Wire API
 
 `contracts/openapi.yaml` is the source of truth.
 
@@ -144,40 +66,35 @@ The signing contract is verified in **two languages**: both Go (`core/sign`) and
 | `GET` | `/v1/detail/{id}/seasons` | Season/episode tree |
 | `GET` | `/v1/play?subjectId=&season=&episode=` | Resolved streams + subtitles |
 
----
+## Testing
 
-## 🤝 Contributing
+```bash
+go test ./... -race
+cd mobile/ios/CinemacoreCore && swift test
+cd mobile/android && ./gradlew :app:testDebugUnitTest
+```
 
-Read [`AGENTS.md`](AGENTS.md) first — it is the operating contract for every harness. Then:
+Both Go (`core/sign`) and Swift load `contracts/signing-vectors.json`, including 53
+`resourceVectors` cases generated from the Go reference.
 
-- [`rules/00-senior-doctrine.md`](rules/00-senior-doctrine.md) — smallest correct change, no loss.
-- [`rules/08-comments.md`](rules/08-comments.md) — comment the *why*, never the *what*.
-- [`rules/07-git-commits.md`](rules/07-git-commits.md) — Conventional Commits (enforced by hook).
+## Contributing
 
-Enable the commit hook once per clone:
+Read [`AGENTS.md`](AGENTS.md) first. Then [`rules/00-senior-doctrine.md`](rules/00-senior-doctrine.md)
+and [`rules/07-git-commits.md`](rules/07-git-commits.md). Enable the commit hook once per clone:
 
 ```bash
 git config core.hooksPath .githooks
 ```
 
----
+## Known gaps
 
-## 🗺️ Known gaps
-
-- No device verification on either mobile surface yet.
-- Downloads are **direct progressive files only** (HLS/DASH refused).
+- No device verification on either mobile surface.
+- Downloads are direct progressive files only (HLS/DASH refused).
 - `core/store/library` is empty — watchlist/history live only in each app's store.
-- iOS still uses hand-written request paths; Android uses the generated OpenAPI client.
+- iOS uses hand-written request paths; Android uses the generated OpenAPI client.
+- `Subject.kind` is inconsistent between contract (`1`/`2`) and live responses (`"series"`).
 
----
-
-## 📄 License
+## License
 
 Not yet specified. Third-party components keep their own licences; Apple's Developer Program
 License Agreement governs where the Apple SDKs may be used.
-
-<div align="center">
-
-Made with ☕ by the Cinemacore team.
-
-</div>
