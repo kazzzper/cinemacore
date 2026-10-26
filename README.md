@@ -10,8 +10,41 @@ A single Go core, a REST API, and native clients for one movie product. Signing,
 - **Offline** — direct progressive downloads with captions saved beside them, resumable.
 - **Testable on Linux** — iOS logic ships as a pure Foundation package; 411 Swift tests + the Go race suite run on the host.
 
-## Quick start
+## Prerequisites
 
+| Tool | Version | Notes |
+|---|---|---|
+| Go | 1.27+ | `core/` and `server/` |
+| Swift | 6.4 | via [swiftly](https://www.swift.org/swiftly/); not on `PATH` by default |
+| xtool | 1.22+ | cross-platform build/sign/install for iOS |
+| Xcode SDK | 27.x | `xtool sdk install` needs the Apple SDK |
+| JDK | 17 | Android build; AGP 9.1 needs 17+ |
+| Android CLI | 1.1+ | SDK packages via `android sdk`; see [`ANDROID.md`](ANDROID.md) |
+| Gradle | 9.1+ | wrapper checked in |
+| Node | 20+ | only for the `tasks/` CLI |
+| Rust | 1.8x | only for the TUI (not started) |
+
+Swift is installed by swiftly but is not on `PATH` by default:
+
+```bash
+export PATH="$HOME/.local/share/swiftly/bin:$PATH"
+```
+
+xtool ships as an AppImage; on a host without FUSE, extract it once:
+
+```bash
+xtool --appimage-extract        # -> squashfs-root/usr/bin/xtool
+export XTOOL="$PWD/squashfs-root/usr/bin/xtool"
+```
+
+If `$HOME` is read-only, redirect caches:
+
+```bash
+export XTL_TMPDIR="$PWD/.tmp" TMPDIR="$PWD/.tmp" XDG_CACHE_HOME="$PWD/.cache"
+export GOCACHE="$PWD/.gocache" GOPATH="$PWD/.gopath"
+```
+
+## Quick start
 ```bash
 go build ./... && go test ./...
 go run ./cmd/cinemacore                 # :8080
