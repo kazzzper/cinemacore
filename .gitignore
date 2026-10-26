@@ -25,6 +25,10 @@ node_modules/
 # Kotlin compiler cache (Android)
 .kotlin/
 mobile/android/.kotlin/
+
+# Gradle / Android
+.gradle/
+**/.gradle/
 mobile/android/build/
 mobile/android/local.properties
 mobile/android/app/build/
