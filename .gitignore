@@ -22,8 +22,9 @@ XTLAuthToken
 # Node (tasks CLI)
 node_modules/
 
-# Gradle / Android
-.gradle/
+# Kotlin compiler cache (Android)
+.kotlin/
+mobile/android/.kotlin/
 mobile/android/build/
 mobile/android/local.properties
 mobile/android/app/build/

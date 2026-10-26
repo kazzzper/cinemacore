@@ -99,6 +99,27 @@ on the host. See `docs/adr/0004`.
 | `GET` | `/v1/detail/{id}/seasons` | Season/episode tree |
 | `GET` | `/v1/play?subjectId=&season=&episode=` | Resolved streams + subtitles |
 
+## Configuration
+
+| Variable | Used by | Purpose |
+|---|---|---|
+| `CINEMACORE_ADDR` | server | Listen address (default `:8080`) |
+| `CINEMACORE_PROVIDER` | server | `moviebox` (default), `streamhype`, or `all` |
+| `CINEMACORE_HOSTS` | server | Override gateway host pool |
+| `CINEMACORE_SPEC` | server | OpenAPI spec path (default `contracts/openapi.yaml`) |
+| `TMDB_API_KEY` | server / clients | TMDB key for StreamHype (required for `streamhype`) |
+
+## Documentation
+
+- [`AGENTS.md`](AGENTS.md) — operating contract for all agents and harnesses.
+- [`ANDROID.md`](ANDROID.md) — Android toolchain setup (JDK 17, Android CLI, SDK 37).
+- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — architecture and design direction.
+- [`docs/adr/`](docs/adr/) — architecture decision records.
+- [`mobile/ios/README.md`](mobile/ios/README.md) — iOS source of truth.
+- [`mobile/android/README.md`](mobile/android/README.md) — Android source of truth.
+- [`mobile/android/PLATFORM_NOTES.md`](mobile/android/PLATFORM_NOTES.md) — Android platform/API traps.
+- [`contracts/openapi.yaml`](contracts/openapi.yaml) — wire API source of truth.
+
 ## Testing
 
 ```bash
