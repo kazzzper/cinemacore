@@ -1,0 +1,142 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Settings -->
+    <string name="settings_title">Settings</string>
+    <string name="settings_action_failed">That change could not be saved. Check the values and try again.</string>
+
+    <string name="settings_section_source">Data source</string>
+    <string name="settings_source_builtin">MovieBox (direct)</string>
+    <string name="settings_source_builtin_detail">Built into the app: the MovieBox catalog, direct playback and subtitles. No server or account needed.</string>
+    <string name="settings_source_gateway">Gateway server</string>
+    <string name="settings_source_gateway_detail">Your own Cinemacore server. Probed at launch; falls back to the demo catalog if it does not answer.</string>
+    <string name="settings_source_streamhype">StreamHype (web)</string>
+    <string name="settings_source_streamhype_detail">TMDB catalog with the provider’s web player. Works without setup; no offline downloads.</string>
+    <string name="settings_source_demo">Bundled demo</string>
+    <string name="settings_source_demo_detail">Offline sample catalog for browsing the interface.</string>
+    <string name="settings_source_live">Live catalog</string>
+    <string name="settings_source_fallback">Bundled demo fallback</string>
+    <string name="settings_source_footer_builtin">The default source. The app talks to MovieBox directly from this device, so there is no gateway or desktop server to start. A connection is required for browsing and streaming; downloads are supported for direct files.</string>
+    <string name="settings_source_footer_gateway">Your own Cinemacore server (go run ./cmd/cinemacore). It is probed at launch; if it does not answer, the bundled demo catalog is used and labelled as such.</string>
+    <string name="settings_source_footer_streamhype">Catalog data comes from TMDB and playback opens the provider’s web player inside the app. Downloads and offline playback are not available on this source.</string>
+    <string name="settings_source_footer_demo">Bundled sample catalog for offline browsing and interface checks. No requests leave the device.</string>
+
+    <string name="settings_gateway_section">Gateway</string>
+    <string name="settings_gateway_label">Gateway URL</string>
+    <string name="settings_gateway_placeholder">http://192.168.1.20:8080</string>
+    <string name="settings_gateway_apply">Apply and reconnect</string>
+    <string name="settings_gateway_applying">Reconnecting…</string>
+    <string name="settings_gateway_help">From a phone use your computer’s LAN address. 127.0.0.1 means the phone itself; the Android emulator reaches the host at 10.0.2.2. Leave blank to use the build default.</string>
+
+    <string name="settings_tmdb_section">StreamHype key</string>
+    <string name="settings_tmdb_label">TMDB API key (optional)</string>
+    <string name="settings_tmdb_show">Show</string>
+    <string name="settings_tmdb_hide">Hide</string>
+    <string name="settings_tmdb_save">Save key</string>
+    <string name="settings_tmdb_saving">Saving…</string>
+    <string name="settings_tmdb_clear">Clear key</string>
+    <string name="settings_tmdb_help">Your key overrides the build or environment key, which overrides StreamHype’s published fallback. StreamHype works with no key at all; a personal key simply uses your own TMDB quota. The key is stored on this device only.</string>
+
+    <string name="settings_section_playback">Playback</string>
+    <string name="settings_autoplay">Autoplay next episode</string>
+    <string name="settings_autoplay_detail">Start the next episode automatically when the current one ends.</string>
+    <string name="settings_speed">Playback speed</string>
+    <string name="settings_speed_detail">Applied to new playback and remembered on this device.</string>
+    <string name="settings_speed_half">0.5×</string>
+    <string name="settings_speed_three_quarters">0.75×</string>
+    <string name="settings_speed_normal">1×</string>
+    <string name="settings_speed_five_quarters">1.25×</string>
+    <string name="settings_speed_one_and_half">1.5×</string>
+    <string name="settings_speed_double">2×</string>
+
+    <string name="settings_section_library">Library</string>
+    <string name="settings_library_history">History</string>
+    <string name="settings_library_history_detail">Resume points and recently watched titles.</string>
+    <string name="settings_library_manage">Manage Categories</string>
+    <string name="settings_library_manage_detail">Choose which Home rails appear and in what order.</string>
+
+    <string name="settings_section_about">About</string>
+    <string name="settings_about_docs">Docs</string>
+    <string name="settings_about_docs_detail">How the app works, gateway setup and playback notes.</string>
+    <string name="settings_about_lab">Lab</string>
+    <string name="settings_about_lab_detail">Inspect the active catalog and preview app dialogs.</string>
+    <string name="settings_about_version">Version</string>
+
+    <!-- Docs -->
+    <string name="docs_title">Docs</string>
+    <string name="docs_subtitle">How the app works, how to connect a gateway, and what playback can do.</string>
+
+    <string name="docs_chapter_start_title">Getting started</string>
+    <string name="docs_start_browse_heading">Browsing</string>
+    <string name="docs_start_browse_body">Home shows rails from the active catalog. Tap a poster for details, episodes, cast and available languages. Search matches titles and genres.</string>
+    <string name="docs_start_resume_heading">Resuming</string>
+    <string name="docs_start_resume_body">Playback position is saved while you watch. History keeps the last point for each episode so you can continue where you stopped.</string>
+
+    <string name="docs_chapter_live_title">Live data and gateways</string>
+    <string name="docs_live_active_heading">Which catalog is active</string>
+    <string name="docs_live_active_body">The app resolves one catalog at launch. Settings shows the resolved source and whether it is live or a demo fallback. A gateway that does not answer falls back to the bundled demo catalog so browsing still works.</string>
+    <string name="docs_live_connect_heading">Connecting a gateway</string>
+    <string name="docs_live_connect_body">Choose Gateway server, enter the base URL, then Apply and reconnect. On the emulator the host machine is 10.0.2.2; on a phone use the computer’s LAN address, not 127.0.0.1.</string>
+    <string name="docs_live_troubleshoot_heading">When the gateway will not connect</string>
+    <string name="docs_live_troubleshoot_body">Confirm the server is running (go run ./cmd/cinemacore), that both devices share a network, and that no firewall blocks port 8080. Lab can probe the gateway version and show what the app actually reached. Local http gateways are supported.</string>
+
+    <string name="docs_chapter_playback_title">Playback, subtitles and downloads</string>
+    <string name="docs_playback_quality_heading">Quality</string>
+    <string name="docs_playback_quality_body">The provider returns one stream with several quality labels. Choosing a quality re-prepares ExoPlayer at the same position; it is not a second download.</string>
+    <string name="docs_playback_subtitles_heading">Subtitles</string>
+    <string name="docs_playback_subtitles_body">Tracks arrive as WebVTT or SRT and are cached in the app’s cache folder. Media3 renders both: SRT is handed over with the correct MIME type, so no separate conversion step is needed.</string>
+    <string name="docs_playback_media3_heading">Media3 playback</string>
+    <string name="docs_playback_media3_body">Playback is handled by Media3 ExoPlayer. Progressive MP4, HLS and DASH are supported; codec support still depends on the device, so an unusual audio track may need another rendition.</string>
+    <string name="docs_playback_downloads_heading">Downloads</string>
+    <string name="docs_playback_downloads_body">Only direct progressive files can be downloaded. HLS and DASH streams are refused with an explanation because they are segmented. There is no storage cap and no automatic deletion. Completed files play from the app’s data folder, and StreamHype web titles cannot be downloaded.</string>
+
+    <string name="docs_chapter_privacy_title">Privacy</string>
+    <string name="docs_privacy_stored_heading">What stays on the device</string>
+    <string name="docs_privacy_stored_body">Watchlist, history, resume points, preferences and the download queue are stored as JSON in the app’s private data folder. Catalog, poster, playback and subtitle requests go to the source you selected; your library is not uploaded anywhere.</string>
+    <string name="docs_privacy_keys_heading">Keys and traffic</string>
+    <string name="docs_privacy_keys_body">A TMDB key you enter is stored with the other settings. Gateway requests go to the URL you configure; StreamHype catalog requests go to TMDB. The app has no analytics or advertising SDK.</string>
+    <string name="docs_privacy_clear_heading">Clearing data</string>
+    <string name="docs_privacy_clear_body">Clearing app storage or uninstalling removes settings, history and downloads together. There is no account, so there is nothing to sign out of.</string>
+
+    <!-- Lab -->
+    <string name="lab_title">Lab</string>
+    <string name="lab_subtitle">Diagnostics for the active catalog and previews of the app’s blocking dialogs.</string>
+
+    <string name="lab_section_catalog">Active catalog</string>
+    <string name="lab_row_source">Catalog source</string>
+    <string name="lab_row_mode">Mode</string>
+    <string name="lab_row_gateway">Gateway</string>
+    <string name="lab_row_gateway_version">Gateway version</string>
+    <string name="lab_version_probing">Probing…</string>
+    <string name="lab_version_unreachable">Unreachable</string>
+    <string name="lab_probe">Probe gateway again</string>
+
+    <string name="lab_section_gates">Dialog previews</string>
+    <string name="lab_gates_footer">These dialogs normally appear only when the gateway demands them. Previews are local: they make no request and change no app state.</string>
+    <string name="lab_gate_lockout">Region lockout</string>
+    <string name="lab_gate_lockout_detail">The gateway refuses this region or device.</string>
+    <string name="lab_gate_force_update">Forced update</string>
+    <string name="lab_gate_force_update_detail">The installed build is below the minimum.</string>
+    <string name="lab_gate_optional_update">Optional update</string>
+    <string name="lab_gate_optional_update_detail">A dismissible upgrade suggestion.</string>
+    <string name="lab_gate_community">Community prompt</string>
+    <string name="lab_gate_community_detail">An invitation to the provider’s community channel.</string>
+
+    <string name="gate_preview_note">Preview only. No request was made and no app state changed.</string>
+    <string name="lab_close_preview">Close preview</string>
+    <string name="lab_not_now">Not now</string>
+    <string name="lab_maybe_later">Maybe later</string>
+    <string name="lab_join_telegram">Join on Telegram</string>
+    <string name="lab_community_url" translatable="false">https://t.me/Gengaworldofficial</string>
+    <string name="lab_link_unavailable_title">Couldn’t open the link</string>
+    <string name="lab_link_unavailable_body">No app on this device can open that link. The community address is https://t.me/Gengaworldofficial</string>
+
+    <string name="gate_lockout_title">Not available here</string>
+    <string name="gate_lockout_body">The gateway refused this region or device. The real gate offers no retry because the answer is not transient. If you use a VPN, reconnect to a supported region and open the app again.</string>
+    <string name="gate_force_title">Update required</string>
+    <string name="gate_force_body">This build is older than the minimum the gateway supports. The real gate blocks playback until Cinemacore is updated and offers no way to continue.</string>
+    <string name="gate_optional_title">Update available</string>
+    <string name="gate_optional_body">Version 0.2.0 is available. The real prompt is dismissible, so you can keep watching and update when convenient.</string>
+    <string name="gate_optional_notes">• Faster poster loading\n• Subtitle timing offset\n• Resume fixes for series</string>
+    <string name="gate_community_title">Join the community</string>
+    <string name="gate_community_body">The provider posts release notes, broken-stream reports and title requests in its community channel. The button opens Telegram in another app; Cinemacore itself sends nothing.</string>
+</resources>

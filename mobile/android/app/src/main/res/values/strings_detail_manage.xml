@@ -1,0 +1,42 @@
+<resources>
+    <string name="detail_loading">Loading title…</string>
+    <string name="detail_empty_title">Nothing to show</string>
+    <string name="detail_empty_message">This title has no details yet.</string>
+    <string name="detail_back">Back</string>
+    <string name="detail_retry">Try again</string>
+    <string name="detail_add_watchlist">Add to watchlist</string>
+    <string name="detail_remove_watchlist">Remove from watchlist</string>
+    <string name="detail_play">Play</string>
+    <string name="detail_play_episode">Play S%1$dE%2$d</string>
+    <string name="detail_download">Download</string>
+    <string name="detail_synopsis">Synopsis</string>
+    <string name="detail_cast">Cast</string>
+    <string name="detail_episodes">Episodes</string>
+    <string name="detail_season">Season %1$d</string>
+    <string name="detail_episode_label">%1$d. %2$s</string>
+    <string name="detail_selected_episode">S%1$dE%2$d</string>
+    <string name="detail_selected">Selected episode</string>
+    <string name="detail_no_episodes">Episodes are not available for this title yet.</string>
+    <string name="detail_no_episodes_download">This series has no episodes to download yet.</string>
+    <string name="detail_episodes_failed">The episode list could not be loaded.</string>
+    <string name="detail_download_title">Download %1$s</string>
+    <string name="detail_download_whole_season">Download whole season %1$d</string>
+    <string name="detail_download_notice_title">Download</string>
+    <string name="detail_download_quality_title">Download quality</string>
+    <string name="detail_download_quality_hint">Choose the quality to keep offline.</string>
+    <string name="detail_download_quality_empty">No downloadable stream is available for this title.</string>
+    <string name="detail_queue_failed">The download could not be queued.</string>
+    <string name="detail_ok">OK</string>
+    <string name="detail_cancel">Cancel</string>
+
+    <string name="manage_title">Manage Categories</string>
+    <string name="manage_back">Back</string>
+    <string name="manage_loading">Loading categories…</string>
+    <string name="manage_empty_title">No categories</string>
+    <string name="manage_empty_message">This catalog does not expose any rails.</string>
+    <string name="manage_hint">Hidden categories stay available but are removed from Home. Use the arrows to change their order.</string>
+    <string name="manage_show">Show %1$s</string>
+    <string name="manage_hide">Hide %1$s</string>
+    <string name="manage_move_up">Move %1$s up</string>
+    <string name="manage_move_down">Move %1$s down</string>
+</resources>

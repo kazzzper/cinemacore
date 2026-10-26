@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="home_loading">Loading your catalogue…</string>
+    <string name="home_empty_title">No titles yet</string>
+    <string name="home_empty_message">The catalogue came back empty.</string>
+    <string name="home_all_hidden_title">Every rail is hidden</string>
+    <string name="home_all_hidden_message">Turn a rail back on in Settings.</string>
+    <string name="home_hidden_rails_notice">Some rails are hidden in Settings.</string>
+    <string name="home_action_refresh">Refresh home</string>
+    <string name="home_action_play">Play</string>
+    <string name="home_action_details">Details</string>
+    <string name="home_demo_source">Bundled demo catalogue</string>
+    <string name="home_metadata_separator" translatable="false">" · "</string>
+
+    <string name="search_title">Search</string>
+    <string name="search_field_placeholder">Movies, series, genres</string>
+    <string name="search_loading">Searching…</string>
+    <string name="search_empty_title">No matches</string>
+    <string name="search_empty_message">Try a different title, genre, or year.</string>
+    <string name="search_idle_title">Search Cinemacore</string>
+    <string name="search_idle_message">Find movies and series by title, genre, or year.</string>
+    <string name="search_clear">Clear search</string>
+</resources>

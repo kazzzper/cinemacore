@@ -1,6 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <style name="Theme.Cinemacore" parent="android:Theme.Material.NoActionBar">
-        <item name="android:statusBarColor">#0B0B0F</item>
-        <item name="android:windowBackground">#0B0B0F</item>
+        <item name="android:windowBackground">#090A10</item>
+        <item name="android:colorAccent">#E50914</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
+
+    <style name="Theme.Cinemacore.Player" parent="Theme.Cinemacore">
+        <item name="android:windowBackground">#000000</item>
+        <item name="android:windowFullscreen">false</item>
+        <item name="android:windowActionModeOverlay">true</item>
     </style>
 </resources>

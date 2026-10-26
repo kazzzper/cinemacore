@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="library_watchlist_title">Watchlist</string>
+    <string name="library_watchlist_empty_title">Your watchlist is empty</string>
+    <string name="library_watchlist_empty_message">Bookmark a title and it will show up here.</string>
+    <string name="library_watchlist_clear_title">Clear watchlist?</string>
+    <string name="library_watchlist_clear_message">Every saved title is removed. This cannot be undone.</string>
+    <string name="library_watchlist_clear_confirm">Clear watchlist</string>
+
+    <string name="library_history_title">History</string>
+    <string name="library_history_empty_title">Nothing watched yet</string>
+    <string name="library_history_empty_message">Titles you play appear here so you can resume them.</string>
+    <string name="library_history_clear_title">Clear watch history?</string>
+    <string name="library_history_clear_message">Resume points for every title are removed. This cannot be undone.</string>
+    <string name="library_history_clear_confirm">Clear history</string>
+    <string name="library_history_remove">Remove %1$s from history</string>
+    <string name="library_history_episode">S%1$dE%2$d</string>
+    <string name="library_history_resume_at">Resume at %1$s</string>
+    <string name="library_history_from_start">Started from the beginning</string>
+    <string name="library_history_finished">Finished</string>
+    <string name="library_history_remaining_minutes">%1$d min left</string>
+    <string name="library_history_remaining_hour">%1$d h left</string>
+    <string name="library_history_remaining_hours">%1$d h %2$d min left</string>
+
+    <string name="library_write_failed">Library update failed. Try again.</string>
+</resources>

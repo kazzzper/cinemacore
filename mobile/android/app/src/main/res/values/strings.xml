@@ -1,3 +1,30 @@
 <resources>
     <string name="app_name">Cinemacore</string>
+    <string name="nav_home">Home</string>
+    <string name="nav_search">Search</string>
+    <string name="nav_watchlist">Watchlist</string>
+    <string name="nav_downloads">Downloads</string>
+    <string name="nav_settings">Settings</string>
+    <string name="action_back">Back</string>
+    <string name="action_retry">Try again</string>
+    <string name="action_play">Play</string>
+    <string name="action_details">Details</string>
+    <string name="action_download">Download</string>
+    <string name="action_clear">Clear</string>
+    <string name="action_cancel">Cancel</string>
+    <string name="state_loading">Loading…</string>
+    <string name="state_empty">Nothing here yet</string>
+    <string name="state_error">Something went wrong</string>
+    <string name="state_locked">Locked</string>
+    <string name="state_load_failed">Couldn’t load</string>
+    <string name="watchlist_remove_action">Remove %1$s from watchlist</string>
+    <string name="splash_tagline">YOUR CINEMA, OFFLINE</string>
+    <string name="demo_banner">Bundled demo catalog: gateway unreachable. Connect a gateway in Settings for live titles.</string>
+    <string name="notification_channel_downloads">Downloads</string>
+    <string name="notification_channel_downloads_description">Progress for offline downloads</string>
+    <string name="notification_downloads_preparing">Preparing downloads…</string>
+    <string name="notification_downloads_starting">Starting</string>
+    <string name="notification_downloads_many">%1$d downloads</string>
+    <string name="notification_downloads_active">Downloading…</string>
+    <string name="notification_downloads_overall">%1$d%% overall</string>
 </resources>
