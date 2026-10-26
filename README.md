@@ -12,8 +12,8 @@ The gateway logic — signing, sessions, providers, catalog, caching, downloads 
 | Surface | State | Verified by |
 |---|---|---|
 | `core/` + `server/` | Builds, tests green. **The live catalog works** — home, search, seasons and play all return real gateway data. | `go build ./... && go test ./...`, then `curl localhost:8080/v1/home` |
-| `mobile/ios/` | **Builds to `Cinemacore.app`.** 16 screens, splash, icon, real AVPlayer. | `swift test` (162 tests) + `xtool dev build` |
-| `mobile/android/` | **Under development.** Kotlin/Compose scaffold; no JDK or Android SDK in this environment, so it cannot be built or tested here yet. | — |
+| `mobile/ios/` | **Builds to `Cinemacore.app`.** Five tabs, detail/history/settings, real AVPlayer, PiP, direct progressive downloads. See [`mobile/ios/README.md`](mobile/ios/README.md). | `swift test` (411 tests / 62 suites) + `xtool dev build` |
+| `mobile/android/` | **Port in progress.** Kotlin/Compose client with the toolchain green. See [`mobile/android/README.md`](mobile/android/README.md). | `./gradlew :app:assembleDebug` + `:app:testDebugUnitTest` |
 | `tools/tui/` | Placeholder (`README.md` only). | — |
 
 Two honest caveats, because they are easy to mistake for working features:
@@ -21,11 +21,11 @@ Two honest caveats, because they are easy to mistake for working features:
 - **The iOS app has never run on a device.** No iPhone was ever attached, so `xtool dev run` has never
   executed and the `.app` is unsigned. `xtool dev build` type-checks and links it against the iOS 27.1
   SDK; that is the strongest evidence available without hardware.
-- **Playback is wired but has never been executed.** Live `/v1/play` returns real progressive-**MP4**
-  URLs, so the media path is viable and the offline mechanism is a `URLSession` download rather than
-  `AVAssetDownloadURLSession`. The *bundled* demo catalog — used when no gateway answers — points at the
-  reserved `.test` TLD and cannot play; the player, six selection sheets, captions and resume are all
-  implemented but unexercised.
+- **Playback is wired but has never been executed on hardware.** Live `/v1/play` returns real
+  progressive-MP4 URLs, so the media path is viable. The downloader handles direct progressive files
+  through `URLSession`; HLS/DASH downloaders are explicitly refused. The *bundled* demo catalog — used
+  when no gateway answers — points at the reserved `.test` TLD and cannot play. Player controls,
+  selection sheets, captions, resume and PiP are implemented but unexercised on a device.
 
 ---
 
@@ -48,7 +48,7 @@ contracts/
 mobile/ios/
   CinemacoreCore/        Pure Foundation package. No SwiftUI/UIKit/AVFoundation — unit-tested on Linux.
   Cinemacore/            SwiftUI app, built by xtool against the Darwin SDK.
-mobile/android/          Kotlin scaffold (unbuildable here)
+mobile/android/          Kotlin/Compose client. Generated OpenAPI types + Media3. See its README.
 tools/tui/               Rust terminal client (placeholder)
 tasks/                   Harness-agnostic work board (Node)
 rules/                   Coding rules, enforced by review
@@ -70,6 +70,9 @@ signing, networking and view models stay testable on the host. See `docs/adr/000
 | Swift | 6.4 | via [swiftly](https://www.swift.org/swiftly/); **not on `PATH` by default** |
 | xtool | 1.22+ | cross-platform build/sign/install for iOS |
 | Xcode SDK | 27.x | `xtool sdk install` needs the Apple SDK; nothing ships in this repo |
+| JDK | 17 | Android build; AGP 9.1 needs 17+ |
+| Android CLI | 1.1+ | SDK packages via `android sdk`; see [`ANDROID.md`](ANDROID.md) |
+| Gradle | 9.1+ | Android build; the wrapper is checked in |
 | Node | 20+ | only for the `tasks/` CLI |
 | Rust | 1.8x | only for the TUI (not started) |
 
@@ -88,7 +91,8 @@ curl -s localhost:8080/health
 ```
 
 The gateway serves MovieBox by default. `CINEMACORE_PROVIDER` selects the source: `moviebox`,
-`streamhype` (TMDB catalog, web-embed playback — needs `TMDB_API_KEY`) or `all` (merged search).
+`streamhype` (TMDB catalog, web-embed playback — needs `TMDB_API_KEY` for the gateway) or `all`
+(merged search). The Android app can also talk to StreamHype directly with its public fallback key.
 See `docs/adr/0007`.
 
 ### iOS — testable logic (works on Linux)
@@ -124,9 +128,18 @@ default. Applying it reconnects and rebuilds every screen.
 
 ### Android
 
+One-time toolchain setup (JDK 17, Android CLI, SDK platform 37.0) is in [`ANDROID.md`](ANDROID.md).
+`android sdk` replaces the deprecated `sdkmanager`.
+
 ```bash
-cd mobile/android && ./gradlew assembleDebug    # needs JDK 17+, Android SDK, ANDROID_HOME
+cd mobile/android
+./gradlew :app:assembleDebug
+./gradlew :app:testDebugUnitTest
 ```
+
+Open `mobile/android` directly in Android Studio. The stable CLI launcher is `studio` (installed at
+`~/.local/bin/studio`). See [`mobile/android/README.md`](mobile/android/README.md) for the data/player
+architecture and known limits.
 
 ### TUI
 
@@ -205,7 +218,8 @@ xtool devices                                # --no-wait to list without blockin
 
 ```bash
 go test ./... -race                    # Go core + server
-cd mobile/ios/CinemacoreCore && swift test   # 160 tests, runs on Linux
+cd mobile/ios/CinemacoreCore && swift test   # 411 tests, runs on Linux
+cd mobile/android && ./gradlew :app:testDebugUnitTest
 ```
 
 ### The signing contract is tested in two languages
@@ -225,8 +239,10 @@ gate rather than a smoke test. Changing the fixture requires a source and a time
 
 ## The wire API
 
-`contracts/openapi.yaml` is the source of truth. A generated client is still pending, so the Swift
-request paths in `RemoteCatalogRepository.swift` are hand-written and must be kept in step by hand.
+`contracts/openapi.yaml` is the source of truth. iOS still uses a hand-written Swift client
+(`RemoteCatalogRepository.swift`). Android uses a committed generated Kotlin client under
+`mobile/android/app/src/main/java/com/cinemacore/app/data/api/`; regenerate it with
+`mobile/android/openapi/generate.sh`.
 
 | Method | Path | Purpose |
 |---|---|---|
@@ -279,21 +295,25 @@ updated if the wire API changed, `tasks` is updated, and the diff is reviewed ag
 
 ## Known gaps
 
-- Downloads: `DownloadsScreen` states plainly that offline playback is not wired; there is no
-  `URLSession`/`AVAssetDownloadURLSession` path yet, and `core/fetch` is empty.
-- `core/store/library` is empty, so watchlist and history live only in the app's own store for now.
+- **No device verification on either mobile surface.** iOS has never run on an iPhone; Android has no
+  AVD or attached device in this environment yet. Builds and JVM/Swift tests are the evidence.
+- Downloads are **direct progressive files only**. HLS/DASH downloaders are refused on both clients.
+  There is no 10 GB cap, 5 GB warning, 2 GB block, or automatic deletion.
+- `core/store/library` is empty, so watchlist and history live only in each app's own store. The two
+  stores do not sync.
 - Liquid Glass appears only via `.buttonStyle(.glass)` on buttons — `GlassEffectContainer`, a floating
   tab bar and `ToolbarSpacer` are not used.
 - No iPad size-class layout, even though the Info.plist declares `UIDeviceFamily [1,2]`.
-- No generated API client: the Swift request paths in `RemoteCatalogRepository` are hand-written
-  literals that must be kept in step with `contracts/openapi.yaml` by hand.
+- iOS still uses hand-written request paths in `RemoteCatalogRepository`. Android uses the generated
+  OpenAPI client.
 - The gateway is inconsistent about `Subject.kind` — the contract documents `1`/`2`, live responses
-  send `"series"`. `Subject.isSeries` accepts both, but the contract should be tightened.
-- Native Swift signing is not on the request path today: the app calls this Go gateway, which signs
-  upstream. `Signing.trSignature` is therefore exercised only by its test suite — it exists so the app
-  can talk to MovieBox directly if that ever becomes the design.
-- Android is a scaffold; the Genga-World Compose app served as the *design reference* for the iOS port
-  rather than being shipped twice.
+  send `"series"`. Clients accept both, but the contract should be tightened.
+- Native Swift signing is not on the request path for the gateway mode: the app calls this Go gateway,
+  which signs upstream. `Signing.trSignature` is exercised by its test suite and the direct built-in
+  source, but not by gateway mode.
+- Android does not port the direct MovieBox signing/session/stream-recovery path. It uses the gateway
+  for MovieBox. StreamHype is available directly, with the public TMDB fallback.
+- Android downloads/player are not verified on a device. The emulator/AVD still needs to be created.
 
 ---
 

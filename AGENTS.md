@@ -28,7 +28,7 @@ go run ./cmd/cinemacore                      # :8080; override with CINEMACORE_A
 # iOS app (Swift 6.4 + xtool; no simulator on Linux -> device only)
 cd mobile/ios/Cinemacore && xtool dev build
 
-# Android app (requires JDK 17+, Android SDK, ANDROID_HOME set)
+# Android app (JDK 17 + Android CLI; one-time setup in ANDROID.md)
 cd mobile/android && ./gradlew assembleDebug
 
 # Work tracking (any harness)
@@ -38,7 +38,7 @@ node tasks/bin/tasks.mjs status
 git config core.hooksPath .githooks
 ```
 
-Missing toolchain? `go` ✅ · `swift` ✅ (6.4.1) · `xtool` ✅ · JDK/Gradle/Android SDK ❌ (needed for Android).
+Missing toolchain? `go` ✅ · `swift` ✅ (6.4.1) · `xtool` ✅. Android setup (JDK 17, Android CLI, SDK) is in [`ANDROID.md`](ANDROID.md).
 
 ## 2. Agent + harness workflow (required)
 
