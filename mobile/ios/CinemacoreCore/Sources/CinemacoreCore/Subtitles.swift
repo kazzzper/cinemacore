@@ -155,13 +155,59 @@ public enum SubtitleTracks {
     /// caption is not a default there — the picker still offers it. `chosen`
     /// being non-nil means the viewer has picked and the answer is never a new
     /// default.
+    ///
+    /// English wins over list order. The provider and the addon both list
+    /// whatever they matched first — often a language the viewer does not read —
+    /// and starting on that track reads as captions in the wrong language rather
+    /// than as a sensible default.
+    ///
+    /// `prefersCommunity` is for a numbered episode. The provider keys captions
+    /// on a title-level resource id, so an episode can be answered with the
+    /// season's first file while the response still looks valid; the community
+    /// search is keyed on the season and episode themselves. When both offer
+    /// English on an episode, the one that was asked about *this* episode is the
+    /// one to start on. Films are unaffected: their captions are title-keyed
+    /// everywhere, so the provider's own track stays the default.
     public static func defaultTrack(
         in tracks: [SubtitleTrack],
         isOriginalAudio: Bool,
-        chosen: SubtitleTrack?
+        chosen: SubtitleTrack?,
+        prefersCommunity: Bool = false
     ) -> SubtitleTrack? {
         guard chosen == nil, isOriginalAudio else { return chosen }
-        return tracks.first
+        if prefersCommunity,
+           let community = english(in: tracks.filter { $0.provider == .community }) {
+            return community
+        }
+        return english(in: tracks) ?? tracks.first
+    }
+
+    /// The first English track, or `nil` when the list carries none.
+    ///
+    /// Matched on the label rather than a code because a track only carries the
+    /// name the source gave it: the provider sends `English`, the addon sends
+    /// whatever `displayName` produced, and a downloaded caption is saved with
+    /// the same label it had upstream.
+    public static func english(in tracks: [SubtitleTrack]) -> SubtitleTrack? {
+        tracks.first { isEnglish($0.language) }
+    }
+
+    /// Whether a track label names English.
+    ///
+    /// Tolerates the spellings the three sources actually emit: `English`,
+    /// `en`, `eng`, `en-US`, `English (US)`, and the regional variants whose
+    /// base language is English. A label that merely *contains* the letters
+    /// (e.g. `Bengali`) must not match, which is why this compares tokens and
+    /// two/three-letter codes instead of using `contains`.
+    public static func isEnglish(_ language: String) -> Bool {
+        let tokens = language
+            .lowercased()
+            .split { !$0.isLetter && !$0.isNumber }
+            .map(String.init)
+        if tokens.contains("english") { return true }
+        // ISO-639-1/2 codes, plus the `en-US` spelling that survives the split
+        // as `en` + `us`.
+        return tokens.contains("en") || tokens.contains("eng")
     }
 }
 
@@ -187,8 +233,15 @@ public struct SubtitleCache: Sendable {
     /// language keeps the name readable; the FNV-1a digest of the track id keeps
     /// it unique without a random UUID, so the same track always maps to the
     /// same file across launches.
-    public func fileURL(for track: SubtitleTrack) -> URL {
-        directory.appendingPathComponent(Self.fileName(for: track))
+    ///
+    /// `scope` separates the same track used by different episodes. The provider
+    /// keys captions on a *title-level* resource id and ignores the episode for
+    /// some titles, so two episodes can answer with one identical URL; without
+    /// this the second episode would reuse the first one's converted file and
+    /// play its dialogue. It is the caller's episode identity, not the URL,
+    /// because the URL is exactly what fails to distinguish them.
+    public func fileURL(for track: SubtitleTrack, scope: String? = nil) -> URL {
+        directory.appendingPathComponent(Self.fileName(for: track, scope: scope))
     }
 
     /// Returns a WebVTT file URL for `track`, converting and caching as needed.
@@ -197,9 +250,13 @@ public struct SubtitleCache: Sendable {
     /// directory: a caption track that is slow or unavailable is still better
     /// than silently rendering nothing.
     @discardableResult
-    public func prepare(track: SubtitleTrack, contents: String) throws -> URL {
+    public func prepare(
+        track: SubtitleTrack,
+        contents: String,
+        scope: String? = nil
+    ) throws -> URL {
         let fileManager = FileManager.default
-        let destination = fileURL(for: track)
+        let destination = fileURL(for: track, scope: scope)
         if Self.isUsableCacheFile(at: destination, fileManager: fileManager) {
             return destination
         }
@@ -223,8 +280,9 @@ public struct SubtitleCache: Sendable {
 
     /// Language plus digest: at most 32 ASCII characters, a hyphen and 16 hex
     /// digits, so the component stays far below the 255-byte limit.
-    static func fileName(for track: SubtitleTrack) -> String {
-        "\(languageStem(track.language))-\(String(fnv1a64(track.id), radix: 16)).vtt"
+    static func fileName(for track: SubtitleTrack, scope: String? = nil) -> String {
+        let key = scope.map { "\(track.id)|\($0)" } ?? track.id
+        return "\(languageStem(track.language))-\(String(fnv1a64(key), radix: 16)).vtt"
     }
 
     /// Keeps a readable prefix while dropping path separators, punctuation and
@@ -330,10 +388,15 @@ public struct SubtitleArchive: Sendable {
     /// are an addition to the download, not a condition of it. The page size is
     /// capped because the provider lists one caption per release it matched,
     /// and a whole shelf of them is not worth the wait.
+    ///
+    /// `scope` is the episode the archive belongs to, so two downloaded episodes
+    /// that answer with the same provider caption URL get separate files instead
+    /// of the second one silently overwriting the first.
     public func store(
         _ tracks: [SubtitleTrack],
         headers: [String: String] = [:],
-        limit: Int = 12
+        limit: Int = 12,
+        scope: String? = nil
     ) async -> [DownloadedSubtitle] {
         let cache = SubtitleCache(directory: directory)
         var saved: [DownloadedSubtitle] = []
@@ -347,7 +410,7 @@ public struct SubtitleArchive: Sendable {
                   (200..<300).contains(http.statusCode),
                   let body = String(data: data, encoding: .utf8),
                   !body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-                  let fileURL = try? cache.prepare(track: track, contents: body)
+                  let fileURL = try? cache.prepare(track: track, contents: body, scope: scope)
             else { continue }
             // Two releases can share a language but never a file, and the cache
             // name is keyed on the track id, so the digest keeps them apart.

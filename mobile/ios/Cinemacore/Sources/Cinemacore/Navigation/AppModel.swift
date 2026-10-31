@@ -12,6 +12,9 @@ import CinemacoreCore
 final class AppModel {
     private(set) var repository: any CatalogRepository
     let library: any LibraryStoring
+    /// Local feature telemetry, persisted beside the library so one directory
+    /// holds all on-device state.
+    let features: FeatureTracker
     private(set) var settings = LibrarySettings()
     /// Human-readable description of where catalog data came from.
     private(set) var sourceNote = ""
@@ -32,6 +35,18 @@ final class AppModel {
     /// switching gateways has to invalidate them; the root view keys off this.
     private(set) var repositoryGeneration = 0
 
+    /// True while a source switch is resolving.
+    ///
+    /// Deliberately *not* `bootstrapped = false`: clearing that flag removes
+    /// `RootView` from the window and leaves a bare background, which is why a
+    /// provider switch looked like the app had hung and needed a relaunch. The
+    /// previous catalogue stays on screen (and stays usable) until the new one
+    /// is ready.
+    private(set) var isSwitchingSource = false
+    /// Why the last switch could not resolve, so Settings can say so and offer
+    /// a retry instead of silently showing demo data.
+    private(set) var sourceSwitchError: String?
+
     /// A gate screen raised from the Lab screen for review.
     ///
     /// These overlays normally appear only when the gateway demands them, which
@@ -49,10 +64,12 @@ final class AppModel {
         repository: any CatalogRepository = FixtureCatalogRepository(),
         library: any LibraryStoring,
         sourceNote: String = "Bundled catalog",
-        downloadsDirectory: URL = CinemacoreApp.downloadsDirectory
+        downloadsDirectory: URL = CinemacoreApp.downloadsDirectory,
+        featuresDirectory: URL = CinemacoreApp.libraryDirectory
     ) {
         self.repository = repository
         self.library = library
+        self.features = FeatureTracker(directory: featuresDirectory)
         self.sourceNote = sourceNote
         self.downloadsDirectory = downloadsDirectory
         self.downloadsEngine = DownloadEngine(
@@ -76,15 +93,7 @@ final class AppModel {
         guard !bootstrapped else { return }
         settings = await library.settings()
 
-        // Built-in mode is the default and needs no gateway at all; the gateway
-        // is a deliberate override whose URL only matters when chosen.
-        let gatewayConfigured = settings.gatewayURL ?? LibrarySettings.defaultGatewayURL
-        let resolver = CatalogResolver(
-            mode: settings.sourceMode,
-            gatewayURL: settings.sourceMode == .gateway ? URL(string: gatewayConfigured) : nil,
-            fallback: { FixtureCatalogRepository() }
-        )
-        let resolution = await resolver.resolve()
+        let resolution = await resolveCatalog()
         // A cancelled resolution reports the source as unavailable; committing
         // that would demote a live session for a launch already abandoned, so a
         // cancelled bootstrap leaves the source alone.
@@ -102,6 +111,74 @@ final class AppModel {
         await refreshWatchlistIDs()
         await startDownloads()
         bootstrapped = true
+    }
+
+    /// The current settings, resolved into a catalogue.
+    private func resolveCatalog() async -> CatalogResolver.Resolution {
+        // Built-in mode is the default and needs no gateway at all; the gateway
+        // is a deliberate override whose URL only matters when chosen.
+        let gatewayConfigured = settings.gatewayURL ?? LibrarySettings.defaultGatewayURL
+        let resolver = CatalogResolver(
+            mode: settings.sourceMode,
+            gatewayURL: settings.sourceMode == .gateway ? URL(string: gatewayConfigured) : nil,
+            fallback: { FixtureCatalogRepository() }
+        )
+        return await resolver.resolve()
+    }
+
+    /// Re-resolves the catalogue after a source change, without ever taking the
+    /// UI away.
+    ///
+    /// This is the fix for "switching providers makes me leave the app": the
+    /// old code cleared `bootstrapped`, which unmounted `RootView` and left a
+    /// bare background for the whole resolve — and if the new source was slow
+    /// or unreachable, that blank screen was the app until it was relaunched.
+    /// Now the previous catalogue stays mounted and usable, a progress state is
+    /// published, and a failure is reported rather than silently swapped for
+    /// demo data that looks like a broken provider.
+    private func switchSource(_ mutate: @Sendable (inout LibrarySettings) -> Void) async {
+        guard !isSwitchingSource else { return }
+        isSwitchingSource = true
+        sourceSwitchError = nil
+        defer { isSwitchingSource = false }
+
+        await updateSettings(mutate)
+        let resolution = await resolveCatalog()
+        guard !Task.isCancelled else { return }
+
+        // A resolution that fell back to the bundled catalogue is a failure the
+        // viewer must see. Installing it silently is what made a dead gateway
+        // look like an app that had lost its library.
+        //
+        // `isLive` rather than a concrete cast: it is the protocol's own answer
+        // to "is this real catalog data", and it stays correct if another
+        // fallback is added later.
+        if !resolution.repository.isLive {
+            sourceSwitchError = resolution.note
+            // The previous source is still installed and still works, so it
+            // stays: a failed switch must not also break what was playing.
+            await recordSourceMode(failed: true)
+            return
+        }
+
+        repository = resolution.repository
+        sourceNote = resolution.note
+        repositoryGeneration += 1
+        await refreshWatchlistIDs()
+        await recordSourceMode(failed: false)
+    }
+
+    /// Records the source the app actually settled on.
+    ///
+    /// Only after the switch resolves: a mode the app failed to reach is not
+    /// adoption, and counting it would make a broken gateway look popular.
+    private func recordSourceMode(failed: Bool) async {
+        let feature: Feature = switch settings.sourceMode {
+        case .builtIn: .builtInSource
+        case .streamHype: .streamHypeSource
+        case .gateway: .gatewaySource
+        }
+        await features.record(feature, kind: failed ? .failed : .used)
     }
 
     /// Starts the engine exactly once per process.
@@ -137,19 +214,20 @@ final class AppModel {
 
     /// Points the app at a different gateway and re-resolves.
     func setGatewayURL(_ url: String?) async {
-        await updateSettings {
+        await switchSource {
             $0.gatewayURL = url
             $0.catalogSourceMode = CatalogResolver.SourceMode.gateway.rawValue
         }
-        bootstrapped = false
-        await bootstrap()
     }
 
     /// Switches the catalog source (built-in or gateway) and re-resolves.
     func setSourceMode(_ mode: CatalogResolver.SourceMode) async {
-        await updateSettings { $0.catalogSourceMode = mode.rawValue }
-        bootstrapped = false
-        await bootstrap()
+        await switchSource { $0.catalogSourceMode = mode.rawValue }
+    }
+
+    /// Retries a source switch that failed, without changing the settings.
+    func retrySourceSwitch() async {
+        await switchSource { _ in }
     }
 
     /// The live gateway's reported build version, or `nil` when it is not
@@ -418,6 +496,13 @@ final class AppModel {
         reason: String?
     ) async -> DownloadQueueOutcome {
         let added = items.isEmpty ? 0 : await downloadsEngine.enqueue(items)
+        // One event per tap, not per episode: a season queued in one go is one
+        // decision to download, and counting twelve rows would inflate adoption.
+        if added > 0 {
+            await features.record(.downloads, kind: .used)
+        } else if failed > 0 {
+            await features.record(.downloads, kind: .failed)
+        }
         return DownloadQueueOutcome(
             requested: requested,
             added: added,

@@ -425,7 +425,7 @@ public struct MovieBoxCatalogRepository: CatalogRepository {
 
     /// Pages the per-title resource listing. The listing is unfiltered by se/ep
     /// on the live cluster, so callers may pass nil for the whole tree.
-    private func resources(subjectID: String, season: Int?, episode: Int?) async throws -> [ResourceItem] {
+    private func resources(subjectID: String, season: Int?, episode: Int?) async throws(CinemacoreError) -> [ResourceItem] {
         var path = "/wefeed-mobile-bff/subject-api/resource?subjectId=\(subjectID)"
         if let season, season > 0 { path += "&se=\(season)" }
         if let episode, episode > 0 { path += "&ep=\(episode)" }
@@ -460,9 +460,8 @@ public struct MovieBoxCatalogRepository: CatalogRepository {
 
     /// External caption tracks for one episode.
     ///
-    /// Keyed by the title's first playable resourceId (Go Subtitles()). Every
-    /// live title checked carries exactly one detector, so the first is the only
-    /// one there is; a title with several uploads would need the playing one.
+    /// The endpoint is keyed on a *resource* id, not on the title, so the id has
+    /// to be the one for the episode being played. See ``captionResourceID``.
     ///
     /// `season` is sent as `se` alongside `episode`. The endpoint documents both
     /// and the client sent only the episode, which leaves a series ambiguous
@@ -472,18 +471,22 @@ public struct MovieBoxCatalogRepository: CatalogRepository {
         season: Int? = nil,
         episode: Int? = nil
     ) async throws(CinemacoreError) -> [SubtitleTrack] {
-        let detail: Envelope<WireSubject> = try await envelope(
-            "GET", "/wefeed-mobile-bff/subject-api/get?subjectId=\(subjectID)"
-        )
-        guard let rid = detail.data?.resourceDetectors?.first?.resourceId, !rid.isEmpty else {
-            return []
-        }
+        guard let rid = try await captionResourceID(
+            subjectID: subjectID, season: season, episode: episode
+        ), !rid.isEmpty
+        else { return [] }
         var path = "/wefeed-mobile-bff/subject-api/get-ext-captions?subjectId=\(subjectID)&resourceId=\(rid)"
         if let season, season > 0 { path += "&se=\(season)" }
         if let episode, episode > 0 { path += "&episode=\(episode)" }
         let out: Envelope<Captions> = try await envelope("GET", path)
         return (out.data?.extCaptions ?? []).compactMap { caption in
-            guard let url = caption.url, !url.isEmpty else { return nil }
+            guard let raw = caption.url, !raw.isEmpty else { return nil }
+            // The gateway returns protocol-relative caption URLs (`//cacdn…`)
+            // on some hosts. Handed to `URL(string:)` verbatim they have no
+            // scheme, so the player cannot fetch them and the track silently
+            // renders nothing — the "subtitle never appears" case. The Go core
+            // promotes these too; this is the same rule.
+            let url = raw.hasPrefix("//") ? "https:" + raw : raw
             return SubtitleTrack(
                 language: firstNonEmpty(caption.lanName, caption.lan),
                 url: url,
@@ -491,6 +494,39 @@ public struct MovieBoxCatalogRepository: CatalogRepository {
                 provider: .provider
             )
         }
+    }
+
+    /// The resource id whose captions belong to the episode being played.
+    ///
+    /// The title payload carries `resourceDetectors` for the title as a whole —
+    /// in practice the first upload, which for a series is season one, episode
+    /// one. Asking the caption endpoint for that id answered *every* episode
+    /// with episode one's file, so episode three played subtitles that did not
+    /// match its picture while the response looked perfectly valid. Opening the
+    /// episode's own id first is what makes the answer episode-specific.
+    ///
+    /// The per-title resource listing is the only place that carries a separate
+    /// id per episode, so it is consulted for a numbered episode and the title's
+    /// detector is kept as the fallback for films and for a listing that names
+    /// no id.
+    private func captionResourceID(
+        subjectID: String,
+        season: Int?,
+        episode: Int?
+    ) async throws(CinemacoreError) -> String? {
+        if let episode, episode > 0 {
+            let listing = try await resources(
+                subjectID: subjectID, season: season, episode: episode
+            )
+            let own = Self.resourcesForEpisode(listing, season: season, episode: episode)
+                .compactMap(\.resourceId)
+                .first { !$0.isEmpty }
+            if let own { return own }
+        }
+        let detail: Envelope<WireSubject> = try await envelope(
+            "GET", "/wefeed-mobile-bff/subject-api/get?subjectId=\(subjectID)"
+        )
+        return detail.data?.resourceDetectors?.first?.resourceId
     }
 
     // MARK: - Home rails

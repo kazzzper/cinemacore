@@ -28,18 +28,28 @@ final class MovieBoxStubURLProtocol: URLProtocol {
     private static let lock = NSLock()
     nonisolated(unsafe) private static var routes: [String: Response] = [:]
     nonisolated(unsafe) private static var failures: [String: URLError.Code] = [:]
+    /// Answers already served, so a test can assert the query a route was
+    /// called with instead of only that it was called.
+    nonisolated(unsafe) private static var served: [String] = []
 
     static func reset() {
         lock.lock()
         defer { lock.unlock() }
         routes = [:]
         failures = [:]
+        served = []
     }
 
     static func stub(_ path: String, _ response: Response) {
         lock.lock()
         defer { lock.unlock() }
         routes[path] = response
+    }
+
+    static func requests() -> [String] {
+        lock.lock()
+        defer { lock.unlock() }
+        return served
     }
 
     /// Answers the route the way a dead network does: no HTTP response at all.
@@ -54,6 +64,7 @@ final class MovieBoxStubURLProtocol: URLProtocol {
 
     override func startLoading() {
         Self.lock.lock()
+        Self.served.append(request.url?.absoluteString ?? "")
         let path = request.url?.path ?? ""
         let failure = Self.failures[path]
         let response = Self.routes[path]
@@ -379,5 +390,161 @@ struct MovieBoxEpisodeSelectionTests {
         )
 
         #expect(info.streams.map(\.url) == ["https://cdn.test/ugc-unlabelled.mp4"])
+    }
+
+    private func stubDetail(resourceId: String = "res-1") {
+        MovieBoxStubURLProtocol.stub(
+            "/wefeed-mobile-bff/subject-api/get",
+            .json("""
+            {"code":0,"data":{"subjectId":"title-1","title":"Dune",
+            "resourceDetectors":[{"resourceId":"\(resourceId)"}]}}
+            """)
+        )
+    }
+
+    private func stubCaptions(_ body: String) {
+        MovieBoxStubURLProtocol.stub(
+            "/wefeed-mobile-bff/subject-api/get-ext-captions",
+            .json(body)
+        )
+    }
+
+    /// The live gateway emits `//cacdn…` on some hosts. Without a scheme the
+    /// player cannot fetch the track, so the caption silently never appears —
+    /// the "subtitles are broken" case that is not a missing subtitle at all.
+    @Test("a protocol-relative caption URL is promoted to https")
+    func protocolRelativeCaption() async throws {
+        MovieBoxStubURLProtocol.reset()
+        stubDetail()
+        stubCaptions(#"""
+        {"code":0,"data":{"extCaptions":[
+        {"lan":"en","lanName":"English","url":"//cacdn.test/en.srt"}
+        ]}}
+        """#)
+
+        let tracks = try await repository().subtitleTracks(subjectID: "title-1")
+
+        #expect(tracks.count == 1)
+        #expect(tracks.first?.url == "https://cacdn.test/en.srt")
+        #expect(tracks.first?.language == "English")
+        #expect(tracks.first?.provider == .provider)
+    }
+
+    @Test("an absolute caption URL is left alone")
+    func absoluteCaption() async throws {
+        MovieBoxStubURLProtocol.reset()
+        stubDetail()
+        stubCaptions(#"""
+        {"code":0,"data":{"extCaptions":[
+        {"lan":"en","lanName":"English","url":"https://cacdn.test/en.vtt"}
+        ]}}
+        """#)
+
+        let tracks = try await repository().subtitleTracks(subjectID: "title-1")
+
+        #expect(tracks.first?.url == "https://cacdn.test/en.vtt")
+        #expect(tracks.first?.format == "vtt")
+    }
+
+    @Test("a query string hides the extension, so the track is treated as SRT")
+    func signedCaptionWithoutExtension() async throws {
+        MovieBoxStubURLProtocol.reset()
+        stubDetail()
+        stubCaptions(#"""
+        {"code":0,"data":{"extCaptions":[
+        {"lan":"en","lanName":"English","url":"https://cacdn.test/sub?Policy=abc&Signature=def"}
+        ]}}
+        """#)
+
+        let tracks = try await repository().subtitleTracks(subjectID: "title-1")
+
+        // The converter also accepts an already-WebVTT body, so defaulting to
+        // SRT is safe; feeding a signed SRT to the VTT parser raw is not.
+        #expect(tracks.first?.format == "srt")
+    }
+
+    @Test("a caption with no usable URL is dropped, not emitted broken")
+    func unusableCaptionIsDropped() async throws {
+        MovieBoxStubURLProtocol.reset()
+        stubDetail()
+        stubCaptions(#"""
+        {"code":0,"data":{"extCaptions":[
+        {"lan":"en","lanName":"English"},
+        {"lan":"fr","lanName":"French","url":""},
+        {"lan":"hi","lanName":"Hindi","url":"https://cacdn.test/hi.srt"}
+        ]}}
+        """#)
+
+        let tracks = try await repository().subtitleTracks(subjectID: "title-1")
+
+        #expect(tracks.map(\.language) == ["Hindi"])
+    }
+
+    @Test("the language name wins over the bare code")
+    func languageNamePreferred() async throws {
+        MovieBoxStubURLProtocol.reset()
+        stubDetail()
+        stubCaptions(#"""
+        {"code":0,"data":{"extCaptions":[
+        {"lan":"en","lanName":"English (US)","url":"https://cacdn.test/en.srt"}
+        ]}}
+        """#)
+
+        let tracks = try await repository().subtitleTracks(subjectID: "title-1")
+
+        #expect(tracks.first?.language == "English (US)")
+    }
+
+    /// The endpoint is keyed on a resource id, and the title payload only names
+    /// the title's first upload — season one, episode one for a series. Asking
+    /// with that id answered every episode with episode one's file, so episode
+    /// three showed subtitles that did not match its picture.
+    @Test("captions are asked for by the playing episode's own resource id")
+    func captionsUseEpisodeResource() async throws {
+        MovieBoxStubURLProtocol.reset()
+        stubDetail(resourceId: "res-s1e1")
+        MovieBoxStubURLProtocol.stub(
+            "/wefeed-mobile-bff/subject-api/resource",
+            .json(#"""
+            {"code":0,"data":{"list":[
+            {"se":1,"ep":1,"duration":100,"resolution":1080,"resourceId":"res-s1e1","resourceLink":"https://cdn.test/e1.mp4"},
+            {"se":1,"ep":3,"duration":100,"resolution":1080,"resourceId":"res-s1e3","resourceLink":"https://cdn.test/e3.mp4"}
+            ],"pager":{"hasMore":false}}}
+            """#)
+        )
+        stubCaptions(#"""
+        {"code":0,"data":{"extCaptions":[
+        {"lan":"en","lanName":"English","url":"https://cacdn.test/e3.srt"}
+        ]}}
+        """#)
+
+        _ = try await repository().subtitleTracks(subjectID: "title-1", season: 1, episode: 3)
+
+        let captionCall = try #require(
+            MovieBoxStubURLProtocol.requests().last { $0.contains("get-ext-captions") }
+        )
+        #expect(captionCall.contains("resourceId=res-s1e3"))
+        #expect(!captionCall.contains("resourceId=res-s1e1"))
+    }
+
+    /// A film has no episode listing to narrow, so the title's own detector is
+    /// still the only id there is.
+    @Test("a film still uses the title's detector")
+    func captionsUseTitleDetectorForFilm() async throws {
+        MovieBoxStubURLProtocol.reset()
+        stubDetail(resourceId: "res-film")
+        stubCaptions(#"""
+        {"code":0,"data":{"extCaptions":[
+        {"lan":"en","lanName":"English","url":"https://cacdn.test/film.srt"}
+        ]}}
+        """#)
+
+        let tracks = try await repository().subtitleTracks(subjectID: "title-1")
+
+        #expect(tracks.count == 1)
+        let captionCall = try #require(
+            MovieBoxStubURLProtocol.requests().last { $0.contains("get-ext-captions") }
+        )
+        #expect(captionCall.contains("resourceId=res-film"))
     }
 }

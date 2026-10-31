@@ -7,11 +7,14 @@ struct SearchScreen: View {
 
     @State private var model: SearchViewModel
     @State private var query = ""
+    /// The source generation `model` was built against, so a switch rebuilds it.
+    @State private var builtGeneration: Int
     @Environment(\.theme) private var theme
 
     init(app: AppModel) {
         self.app = app
         _model = State(initialValue: SearchViewModel(repository: app.repository))
+        _builtGeneration = State(initialValue: app.repositoryGeneration)
     }
 
     var body: some View {
@@ -54,6 +57,16 @@ struct SearchScreen: View {
         .onSubmit { Task { await model.submit(query) } }
         .navigationTitle("Search")
         .navigationBarTitleDisplayMode(.inline)
+        // A source switch changes which catalogue a query runs against. The
+        // current results belong to the old one, so they are dropped and the
+        // query is re-run rather than left pointing at a source no longer in use.
+        .onChange(of: app.repositoryGeneration) { _, generation in
+            guard generation != builtGeneration else { return }
+            builtGeneration = generation
+            model = SearchViewModel(repository: app.repository)
+            guard !query.isEmpty else { return }
+            Task { await model.submit(query) }
+        }
     }
 
     @ViewBuilder

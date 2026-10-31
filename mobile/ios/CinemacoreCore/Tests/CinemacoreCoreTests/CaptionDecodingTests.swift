@@ -28,6 +28,10 @@ struct CaptionDecodingTests {
             "/wefeed-mobile-bff/subject-api/get-ext-captions",
             #"{"code":0,"data":\#(captions)}"#
         )
+        CaptionStubURLProtocol.stub(
+            "/wefeed-mobile-bff/subject-api/resource",
+            #"{"code":0,"data":{"list":[{"se":1,"ep":1,"duration":60,"resolution":1080,"resourceId":"rid-ep1","resourceLink":"https://cdn.test/e1.mp4"}],"pager":{"hasMore":false}}}"#
+        )
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [CaptionStubURLProtocol.self]
         let session = MovieBoxSession(
@@ -124,7 +128,10 @@ struct CaptionDecodingTests {
 @Suite("Caption request keying", .serialized)
 struct CaptionRequestKeyingTests {
 
-    private func repository(captions: String) -> MovieBoxCatalogRepository {
+    private func repository(
+        captions: String,
+        listing: String = #"{"list":[{"se":1,"ep":1,"duration":60,"resolution":1080,"resourceId":"rid-s1e1","resourceLink":"https://cdn.test/e1.mp4"},{"se":3,"ep":4,"duration":60,"resolution":1080,"resourceId":"rid-s3e4","resourceLink":"https://cdn.test/e34.mp4"}],"pager":{"hasMore":false}}"#
+    ) -> MovieBoxCatalogRepository {
         CaptionKeyingURLProtocol.reset()
         CaptionKeyingURLProtocol.stub(
             "/wefeed-mobile-bff/subject-api/get",
@@ -133,6 +140,10 @@ struct CaptionRequestKeyingTests {
         CaptionKeyingURLProtocol.stub(
             "/wefeed-mobile-bff/subject-api/get-ext-captions",
             #"{"code":0,"data":\#(captions)}"#
+        )
+        CaptionKeyingURLProtocol.stub(
+            "/wefeed-mobile-bff/subject-api/resource",
+            #"{"code":0,"data":\#(listing)}"#
         )
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [CaptionKeyingURLProtocol.self]
@@ -148,14 +159,29 @@ struct CaptionRequestKeyingTests {
     {"extCaptions":[{"lan":"en","lanName":"English","url":"https://cdn.test/en.srt"}]}
     """#
 
-    @Test("the title's detector resource is the one captions are keyed by")
-    func resourceComesFromTheDetector() async throws {
+    /// The title payload names one detector for the title as a whole — the
+    /// first upload, which for a series is season one, episode one. Keying the
+    /// caption call on it answered every episode with episode one's file, so
+    /// episode three showed captions that did not match its picture.
+    @Test("an episode is keyed by its own resource, not the title's first")
+    func resourceComesFromTheEpisode() async throws {
         let repository = repository(captions: captions)
+        _ = try await repository.subtitleTracks(subjectID: "s1", season: 3, episode: 4)
+
+        let query = try #require(CaptionKeyingURLProtocol.lastCaptionQuery)
+        #expect(query["resourceId"] == "rid-s3e4")
+        #expect(query["subjectId"] == "s1")
+    }
+
+    /// A listing that names no id for the episode leaves the detector as the
+    /// only id there is; a film takes the same path.
+    @Test("a listing with no episode id falls back to the detector")
+    func resourceFallsBackToTheDetector() async throws {
+        let repository = repository(captions: captions, listing: #"{"list":[]}"#)
         _ = try await repository.subtitleTracks(subjectID: "s1", season: 1, episode: 1)
 
         let query = try #require(CaptionKeyingURLProtocol.lastCaptionQuery)
         #expect(query["resourceId"] == "rid-1")
-        #expect(query["subjectId"] == "s1")
     }
 
     /// The endpoint takes `se` as well as `episode`; sending only the episode

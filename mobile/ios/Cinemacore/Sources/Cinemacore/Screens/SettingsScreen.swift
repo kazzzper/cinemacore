@@ -31,11 +31,36 @@ struct SettingsScreen: View {
 
                     LabeledContent("Status") {
                         HStack(spacing: 6) {
-                            Circle()
-                                .fill(app.isLive ? Color.green : theme.accent.color)
-                                .frame(width: 8, height: 8)
-                            Text(app.sourceNote)
+                            if app.isSwitchingSource {
+                                ProgressView().controlSize(.mini)
+                            } else {
+                                Circle()
+                                    .fill(app.isLive ? Color.green : theme.accent.color)
+                                    .frame(width: 8, height: 8)
+                            }
+                            Text(app.isSwitchingSource ? "Switching source…" : app.sourceNote)
                                 .foregroundStyle(theme.textSecondary.color)
+                        }
+                    }
+                    .accessibilityLabel("Data source status")
+                    .accessibilityValue(app.isSwitchingSource ? "Switching source" : app.sourceNote)
+
+                    if let failure = app.sourceSwitchError {
+                        VStack(alignment: .leading, spacing: Layout.spacing2) {
+                            Label(failure, systemImage: "exclamationmark.triangle")
+                                .font(Typography.metadata)
+                                .foregroundStyle(theme.accent.color)
+                            Text("The previous source is still in use.")
+                                .font(Typography.metadata)
+                                .foregroundStyle(theme.textSecondary.color)
+                            Button {
+                                Task { await app.retrySourceSwitch() }
+                            } label: {
+                                Label("Try again", systemImage: "arrow.clockwise")
+                                    .font(Typography.button)
+                            }
+                            .buttonStyle(.borderless)
+                            .frame(minHeight: Layout.minimumTarget)
                         }
                     }
                 } header: {
@@ -96,6 +121,12 @@ struct SettingsScreen: View {
                         Label("Lab", systemImage: "wrench.and.screwdriver")
                     }
                     LabeledContent("Version", value: "0.1.0")
+                }
+
+                Section("Diagnostics") {
+                    NavigationLink(value: Route.featureTracking) {
+                        Label("Feature tracking", systemImage: "chart.bar.doc.horizontal")
+                    }
                 }
             }
             .scrollContentBackground(.hidden)

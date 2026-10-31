@@ -10,6 +10,13 @@ struct DetailScreen: View {
     @State private var isInWatchlist = false
     @State private var showsEpisodePicker = false
     @State private var downloadNotice: String?
+    /// The source generation this screen's view model was built against.
+    ///
+    /// A detail page opened from a search result or a rail outlives a provider
+    /// switch, and its view model captured the old repository in `init`. Left
+    /// alone it keeps loading from a source the app is no longer using — which
+    /// is one of the ways a switch looked like "the app needs restarting".
+    @State private var builtGeneration: Int
     @Environment(\.theme) private var theme
 
     init(subject: Subject, app: AppModel, season: Int? = nil) {
@@ -18,6 +25,7 @@ struct DetailScreen: View {
         _model = State(
             initialValue: DetailViewModel(subject: subject, repository: app.repository, season: season)
         )
+        _builtGeneration = State(initialValue: app.repositoryGeneration)
     }
 
     private var playback: PlaybackRequest {
@@ -92,6 +100,19 @@ struct DetailScreen: View {
         .task {
             isInWatchlist = app.isInWatchlist(subject.id)
             await model.load()
+        }
+        // A source switch replaces the catalogue underneath this page. Rebuilding
+        // the view model against the new repository (and reloading) is what keeps
+        // the page honest instead of showing the previous provider's episode tree.
+        .onChange(of: app.repositoryGeneration) { _, generation in
+            guard generation != builtGeneration else { return }
+            builtGeneration = generation
+            model = DetailViewModel(
+                subject: subject,
+                repository: app.repository,
+                season: model.selectedSeason
+            )
+            Task { await model.load() }
         }
         .sheet(isPresented: $showsEpisodePicker) { episodePicker }
         .alert("Download", isPresented: noticeIsPresented) {
@@ -275,44 +296,107 @@ struct DetailScreen: View {
             .padding(.horizontal, Layout.spacing4)
 
             ForEach(model.episodes) { episode in
-                NavigationLink(value: Route.player(playbackRequest(for: episode))) {
-                    HStack(spacing: Layout.spacing3) {
-                        RemoteImage(url: episode.stillURL)
-                            .frame(width: 96, height: 54)
-                            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("\(episode.number). \(episode.displayTitle)")
-                                .font(Typography.rowTitle)
-                                .foregroundStyle(theme.textPrimary.color)
-                                .lineLimit(2)
-                            if let duration = episode.durationText {
-                                Text(duration)
-                                    .font(Typography.metadata)
-                                    .foregroundStyle(theme.textSecondary.color)
-                            }
-                        }
-                        Spacer(minLength: 0)
-
-                        Image(systemName: "play.fill")
-                            .font(.system(size: 11, weight: .bold))
-                            .foregroundStyle(theme.background.color)
-                            .frame(width: 28, height: 28)
-                            .background(theme.brand.color, in: Circle())
-                            .accessibilityHidden(true)
-
-                        if model.selectedEpisode?.id == episode.id {
-                            Image(systemName: "checkmark.circle.fill")
-                                .foregroundStyle(theme.brand.color)
-                        }
-                    }
-                    .padding(.horizontal, Layout.spacing4)
-                    .frame(minHeight: Layout.minimumTarget)
-                }
-                .buttonStyle(.plain)
-                .simultaneousGesture(TapGesture().onEnded { model.selectEpisode(episode) })
-                .accessibilityHint("Plays this episode")
+                episodeRow(episode)
             }
         }
+    }
+
+    /// One episode: play it, or download just it.
+    ///
+    /// The download control is a sibling of the `NavigationLink`, not a child.
+    /// A button nested inside a link hands its tap to the link on iOS, so the
+    /// old "download this episode" affordance — which only existed as a
+    /// whole-season sheet — became the only way to get one episode. Splitting
+    /// the row gives each action its own 44 pt target and makes the per-episode
+    /// icon possible.
+    private func episodeRow(_ episode: Episode) -> some View {
+        HStack(spacing: Layout.spacing2) {
+            NavigationLink(value: Route.player(playbackRequest(for: episode))) {
+                HStack(spacing: Layout.spacing3) {
+                    RemoteImage(url: episode.stillURL)
+                        .frame(width: 96, height: 54)
+                        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("\(episode.number). \(episode.displayTitle)")
+                            .font(Typography.rowTitle)
+                            .foregroundStyle(theme.textPrimary.color)
+                            .lineLimit(2)
+                        if let duration = episode.durationText {
+                            Text(duration)
+                                .font(Typography.metadata)
+                                .foregroundStyle(theme.textSecondary.color)
+                        }
+                    }
+                    Spacer(minLength: 0)
+
+                    Image(systemName: "play.fill")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(theme.background.color)
+                        .frame(width: 28, height: 28)
+                        .background(theme.brand.color, in: Circle())
+                        .accessibilityHidden(true)
+
+                    if model.selectedEpisode?.id == episode.id {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundStyle(theme.brand.color)
+                    }
+                }
+                .contentShape(Rectangle())
+                .frame(minHeight: Layout.minimumTarget)
+            }
+            .buttonStyle(.plain)
+            .simultaneousGesture(TapGesture().onEnded { model.selectEpisode(episode) })
+            .accessibilityHint("Plays this episode")
+
+            episodeDownloadButton(episode)
+        }
+        .padding(.horizontal, Layout.spacing4)
+    }
+
+    /// What the queue already knows about this episode, so the icon can show it
+    /// rather than offering a download the viewer already has.
+    private func downloadState(for episode: Episode) -> DownloadStatus? {
+        let matches = app.downloads.filter {
+            $0.subjectID == subject.id
+                && $0.season == episode.season
+                && $0.episode == episode.number
+        }
+        // A finished copy outranks one still in flight: it is the state the
+        // viewer cares about. Ranking lives here rather than reusing the core's
+        // presentation order, which is internal to that module.
+        if matches.contains(where: { $0.status == .completed }) { return .completed }
+        for status in [DownloadStatus.downloading, .queued, .paused, .failed]
+        where matches.contains(where: { $0.status == status }) {
+            return status
+        }
+        return nil
+    }
+
+    private func episodeDownloadButton(_ episode: Episode) -> some View {
+        let status = downloadState(for: episode)
+        let symbol: String = switch status {
+        case .completed: "arrow.down.circle.fill"
+        case .queued, .downloading, .paused: "arrow.down.circle.dotted"
+        case .failed: "arrow.down.circle"
+        case nil: "arrow.down.circle"
+        }
+        return Button {
+            Task { await queue([DownloadTarget(season: episode.season, episode: episode)]) }
+        } label: {
+            Image(systemName: symbol)
+                .font(.system(size: 20))
+                .foregroundStyle(status == .completed ? theme.brand.color : theme.textPrimary.color)
+                .frame(width: Layout.minimumTarget, height: Layout.minimumTarget)
+        }
+        .buttonStyle(.plain)
+        .disabled(status == .completed || status == .queued || status == .downloading)
+        .opacity(status == .completed ? 1 : 0.9)
+        .accessibilityLabel(
+            status == .completed
+                ? "Episode \(episode.number) is downloaded"
+                : "Download episode \(episode.number)"
+        )
+        .accessibilityHint("Queues this episode for offline playback")
     }
 }

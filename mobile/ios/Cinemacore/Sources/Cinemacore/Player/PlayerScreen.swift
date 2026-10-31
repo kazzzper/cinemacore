@@ -588,11 +588,40 @@ struct PlayerScreen: View {
         }
     }
 
+    /// The top chrome: an unmistakable way out, then what is playing.
+    ///
+    /// The exit used to be an `xmark` only, which reads as "close this overlay"
+    /// rather than "go back" — and with the navigation bar hidden there was no
+    /// other exit at all, so a movie with no episode chrome looked like a dead
+    /// end. A labelled chevron is the affordance every player uses for the same
+    /// thing, and the title beside it says what you are leaving.
     private var topRow: some View {
         HStack(spacing: Layout.spacing1) {
-            iconButton("xmark", label: "Close player") { dismiss() }
+            Button { dismiss() } label: {
+                HStack(spacing: 2) {
+                    Image(systemName: "chevron.backward")
+                        .font(.system(size: 18, weight: .semibold))
+                    Text("Back")
+                        .font(Typography.button)
+                }
+                .foregroundStyle(theme.textPrimary.color)
+                .padding(.trailing, Layout.spacing2)
+                .frame(minHeight: Layout.minimumTarget)
+            }
+            .accessibilityLabel("Back")
+            .accessibilityHint("Leaves the player and returns to the previous screen")
+
+            Text(model.request.episode?.displayTitle ?? model.request.subject.title)
+                .font(Typography.metadata.weight(.medium))
+                .foregroundStyle(theme.textSecondary.color)
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .layoutPriority(-1)
+
             if model.isPlayingLocal { downloadedBadge }
+
             Spacer(minLength: 0)
+
             if model.speed != 1 {
                 Chip(text: model.speedLabel, prominent: true)
                     .lineLimit(1)
@@ -666,18 +695,34 @@ struct PlayerScreen: View {
         .opacity(available ? 1 : 0.35)
     }
 
+    /// The scrubber.
+    ///
+    /// Three things made the old one feel inaccurate:
+    ///
+    /// * `0...max(duration, 1)` gave a one-second range before the duration was
+    ///   known, so the thumb could only reach the first second of the film;
+    /// * the playhead kept ticking while the finger was down, so the displayed
+    ///   time drifted away from the thumb;
+    /// * the released target was dropped before the (asynchronous) seek landed,
+    ///   so the thumb sprang back to the pre-seek position for a frame or two.
+    ///
+    /// The slider is disabled until a duration exists, the model ignores ticks
+    /// while scrubbing, and `scrubTarget` is held until the model reports the
+    /// seek settled.
     private var scrubberRow: some View {
-        HStack(spacing: Layout.spacing3) {
-            Text(PlayerModel.timeText(scrubTarget ?? model.position))
+        let known = model.duration > 0
+        let shown = scrubTarget ?? model.position
+        return HStack(spacing: Layout.spacing3) {
+            Text(PlayerModel.timeText(shown))
                 .font(Typography.metadata.monospacedDigit())
                 .foregroundStyle(theme.textPrimary.color)
 
             Slider(
                 value: Binding(
-                    get: { scrubTarget ?? model.position },
+                    get: { min(max(shown, 0), max(model.duration, 0.001)) },
                     set: { scrubTarget = $0 }
                 ),
-                in: 0...max(model.duration, 1),
+                in: 0...max(model.duration, 0.001),
                 onEditingChanged: { editing in
                     if editing {
                         model.beginScrubbing()
@@ -685,17 +730,21 @@ struct PlayerScreen: View {
                     } else {
                         // Seeking happens here, on release, never per drag frame.
                         let target = scrubTarget ?? model.position
-                        scrubTarget = nil
                         model.seek(to: target)
                         model.endScrubbing()
+                        // Cleared on the next runloop pass: the model has already
+                        // set `position` to the target, so the thumb stays put
+                        // instead of flashing back through the old value.
+                        Task { @MainActor in scrubTarget = nil }
                     }
                 }
             )
             .tint(theme.brand.color)
+            .disabled(!known)
             .accessibilityLabel("Playback position")
-            .accessibilityValue(PlayerModel.timeText(scrubTarget ?? model.position))
+            .accessibilityValue(PlayerModel.timeText(shown))
 
-            Text(PlayerModel.remainingText(position: scrubTarget ?? model.position, duration: model.duration))
+            Text(PlayerModel.remainingText(position: shown, duration: model.duration))
                 .font(Typography.metadata.monospacedDigit())
                 .foregroundStyle(theme.textSecondary.color)
         }

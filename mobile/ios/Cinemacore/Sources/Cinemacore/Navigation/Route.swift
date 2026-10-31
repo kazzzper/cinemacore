@@ -76,6 +76,7 @@ enum Route: Hashable {
     case manageCategories
     case docs
     case lab
+    case featureTracking
 }
 
 /// Maps a ``Route`` to its screen.
@@ -102,6 +103,8 @@ struct RouteDestination: View {
             DocsScreen()
         case .lab:
             LabScreen(app: app)
+        case .featureTracking:
+            FeatureTrackingScreen(app: app)
         }
     }
 }

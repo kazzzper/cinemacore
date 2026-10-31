@@ -48,6 +48,19 @@ struct SkipIndicator: Identifiable, Equatable {
     var text: String { "\(Int(abs(seconds).rounded())) seconds" }
 }
 
+/// What the community caption lookup currently has to offer.
+///
+/// The picker needs to tell three states apart: still searching, found tracks,
+/// and found none. A silent empty section is indistinguishable from a source
+/// that does not exist, which is what made "community subtitles are missing"
+/// look like a missing feature rather than a failed request.
+enum SubtitleAvailability: Equatable {
+    case idle
+    case loading
+    case available(count: Int)
+    case unavailable
+}
+
 /// Where the bytes for the current item come from.
 private enum MediaSource {
     /// The CDN, addressed by a resolved rendition.
@@ -150,6 +163,10 @@ final class PlayerModel {
     private var playbackObservation: NSKeyValueObservation?
     private var endTask: Task<Void, Never>?
     private var pendingSeek: Double?
+    /// The target of an in-flight seek. Non-nil from the moment the viewer
+    /// releases the scrubber until the player reports it has landed, and the
+    /// reason ``tick(_:)`` leaves the optimistic position alone in that window.
+    private var pendingSeekTarget: Double?
     private var controlsTask: Task<Void, Never>?
     private var subtitleTask: Task<Void, Never>?
     private var audioTask: Task<Void, Never>?
@@ -160,6 +177,21 @@ final class PlayerModel {
     /// Set once the user picks a caption track, so late-arriving provider
     /// metadata cannot overwrite that choice.
     private var subtitleChosen = false
+    /// What the community caption lookup has to offer, for the picker's own
+    /// section and its retry action.
+    private(set) var subtitleAvailability: SubtitleAvailability = .idle
+    /// The episode identity the current caption cache files are keyed by.
+    ///
+    /// The provider keys captions on a title-level resource id, so two episodes
+    /// can answer with one identical URL; scoping the cache by episode is what
+    /// stops episode 3 from playing episode 1's converted file.
+    private var subtitleScope: String {
+        ResumePoint.makeID(
+            subjectID: request.subject.id,
+            season: request.season,
+            episode: request.episode?.number
+        )
+    }
     /// A retry after a download that would not play goes back to the provider
     /// instead of reopening the same file.
     private var ignoresDownload = false
@@ -420,6 +452,14 @@ final class PlayerModel {
         // A fresh source resets the captions, so a choice made for the previous
         // episode cannot block the new one's default track.
         subtitleChosen = false
+        // The previous episode's track and cue must go with it. Leaving the
+        // selection in place was what made episode 3 play episode 1's captions:
+        // the new payload's default was refused because `selectedSubtitle` was
+        // still set, and the old track kept rendering over the new picture.
+        selectedSubtitle = nil
+        document = nil
+        activeCue = nil
+        subtitleAvailability = .idle
         defer { isReloading = false }
 
         // A finished download outranks the network: it is the one source that
@@ -551,6 +591,7 @@ final class PlayerModel {
                 return
             }
             rebuild(.stream(stream, url), startingAt: await resume(restartAt))
+            Task { await app.features.record(.playback, kind: .used, detail: stream.quality) }
             // After `rebuild`, so the picture never waits on a caption search.
             await hydrateFreeSubtitles()
         } catch {
@@ -584,6 +625,7 @@ final class PlayerModel {
                 )))
                 return
             }
+            Task { await app.features.record(.playback, kind: .failed) }
             haltTerminalPlayback()
             enterTerminalState(error.requiresGate ? .locked(error) : .failed(error))
         }
@@ -597,20 +639,26 @@ final class PlayerModel {
         setFullscreen(false)
     }
 
-    /// A second caption source, so a title the provider publishes none for — or
-    /// publishes only one track for — still offers a choice.
+    /// A second caption source, so the picker always offers community tracks —
+    /// whatever the provider returned.
     ///
-    /// Runs whenever no community track is already listed, whatever the
-    /// provider returned: the two sources are different subtitles, and the
-    /// viewer is the one who can tell which matches their file. It never blocks
-    /// playback: the item is already being built when this is awaited.
+    /// It runs even when the provider published captions of its own: those are
+    /// different files timed to different releases, and the viewer is the one
+    /// who can tell which matches their copy. The only reason to skip is a
+    /// community track already in the list.
+    ///
+    /// It never blocks playback — the item is already being built when this is
+    /// awaited — and it reports its own outcome so the picker can say "none
+    /// available" and offer a retry instead of silently showing a short list.
     private func hydrateFreeSubtitles() async {
-        guard !stopped, !Task.isCancelled, !subtitleChosen,
-              case .loaded(let current) = state,
-              !current.subtitles.contains(where: { $0.provider == .community })
-        else { return }
+        guard !stopped, !Task.isCancelled, case .loaded(let current) = state else { return }
+        guard !current.subtitles.contains(where: { $0.provider == .community }) else {
+            subtitleAvailability = .available(count: current.subtitles.count(where: { $0.provider == .community }))
+            return
+        }
 
-        let request = FreeSubtitleRequest(
+        subtitleAvailability = .loading
+        let lookup = FreeSubtitleRequest(
             title: request.subject.title,
             year: request.subject.year,
             isSeries: isSeries,
@@ -618,25 +666,44 @@ final class PlayerModel {
             episode: request.episode?.number,
             language: app.settings.preferredLanguage
         )
-        let tracks = await freeSubtitles.tracks(for: request)
+        let tracks = await freeSubtitles.tracks(for: lookup)
         // The item, the episode and the viewer's own choice can all have moved
         // on while the search was in flight.
-        guard !stopped, !Task.isCancelled, !tracks.isEmpty, !subtitleChosen,
-              case .loaded(let latest) = state,
-              !latest.subtitles.contains(where: { $0.provider == .community })
-        else { return }
+        guard !stopped, !Task.isCancelled, case .loaded(let latest) = state else { return }
 
+        guard !tracks.isEmpty else {
+            // A failed search and a title nobody has subtitled are the same
+            // answer here: there is nothing to offer. The retry is what
+            // distinguishes them for a viewer who just lost their connection.
+            subtitleAvailability = .unavailable
+            return
+        }
+        // A second search may have landed first; merging again is still right,
+        // because `merging` drops what is already listed.
         let merged = SubtitleTracks.merging(latest.subtitles, with: tracks)
         state = .loaded(PlayInfo(streams: latest.streams, subtitles: merged))
-        // Only a viewer who has not chosen gets a default; the pick they made
-        // while this was in flight stands.
-        guard selectedSubtitle == nil else { return }
+        subtitleAvailability = .available(count: merged.count(where: { $0.provider == .community }))
+
+        // The provider's own default is applied before this lookup runs, so a
+        // non-nil `selectedSubtitle` is not a viewer choice — only
+        // `subtitleChosen` is. Re-applying the default here is what moves a
+        // series episode off the provider's title-keyed caption file and onto
+        // the one that was asked about this episode.
+        guard !subtitleChosen else { return }
         selectedSubtitle = SubtitleTracks.defaultTrack(
             in: merged,
             isOriginalAudio: selectedDub?.isOriginal != false,
-            chosen: nil
+            chosen: nil,
+            prefersCommunity: request.episode != nil
         )
         loadSubtitles()
+    }
+
+    /// Re-runs the community lookup after it failed, without disturbing
+    /// playback.
+    func retryCommunitySubtitles() async {
+        guard !stopped else { return }
+        await hydrateFreeSubtitles()
     }
 
     /// Plays a finished download, then asks the provider only for what a file
@@ -715,15 +782,26 @@ final class PlayerModel {
             streams: current.streams,
             subtitles: SubtitleTracks.merging(current.subtitles, with: info.subtitles)
         ))
-        guard !subtitleChosen, selectedSubtitle == nil, selectedDub?.isOriginal != false,
-              let first = info.subtitles.first else {
-            // A download with no provider captions is the same captionless case
-            // a stream can be, so it gets the same second chance.
+        guard !subtitleChosen, selectedSubtitle == nil, selectedDub?.isOriginal != false else {
+            // A viewer who already has a track — the download's own saved
+            // caption, or one picked while this ran — keeps it. The community
+            // source is still offered beside it.
             await hydrateFreeSubtitles()
             return
         }
-        selectedSubtitle = first
-        loadSubtitles()
+        // English first, matching the streamed path: the provider lists whatever
+        // it matched first, which is often not English.
+        if let preferred = SubtitleTracks.defaultTrack(
+            in: info.subtitles,
+            isOriginalAudio: true,
+            chosen: nil
+        ) {
+            selectedSubtitle = preferred
+            loadSubtitles()
+        }
+        // A download with no provider captions is the same captionless case a
+        // stream can be, so it always gets the second chance.
+        await hydrateFreeSubtitles()
     }
 
 
@@ -864,6 +942,9 @@ final class PlayerModel {
         urlAsset = asset
         self.item = item
         pendingSeek = seconds
+        // A new item supersedes any seek still landing on the old one; leaving
+        // the guard set would freeze the scrubber at the previous target.
+        pendingSeekTarget = nil
         observe(item)
         player.replaceCurrentItem(with: item)
         playbackStateChanged()
@@ -944,6 +1025,11 @@ final class PlayerModel {
 
     private func tick(_ seconds: Double) {
         guard seconds.isFinite else { return }
+        // While the viewer drags, the slider owns the displayed position. The
+        // periodic observer still reports the *old* playhead until the seek
+        // lands, so writing it here is what made the thumb snap back under the
+        // finger and made a released seek look like it missed its target.
+        guard !isScrubbing, pendingSeekTarget == nil else { return }
         position = seconds
         refreshCue()
         recordIfDue()
@@ -1383,19 +1469,34 @@ final class PlayerModel {
     ///
     /// `revealingControls` is false for the double-tap skip, whose own indicator
     /// is the entire response.
+    ///
+    /// The target is held in ``pendingSeekTarget`` until the player actually
+    /// reports a clock near it. A seek is asynchronous — the periodic observer
+    /// keeps reporting the pre-seek playhead for a moment — so without this the
+    /// next tick would overwrite the optimistic position and the scrubber would
+    /// visibly spring back to where the viewer dragged *from*.
     func seek(to seconds: Double, revealingControls: Bool = true) {
         guard duration > 0 else { return }
         let target = min(max(seconds, 0), duration)
         position = target
         pendingSeek = nil
+        pendingSeekTarget = target
         player.seek(
             to: CMTime(seconds: target, preferredTimescale: 600),
             toleranceBefore: .zero,
             toleranceAfter: .zero
-        )
+        ) { [weak self] _ in
+            Task { @MainActor in self?.seekSettled() }
+        }
         refreshCue()
         publishNowPlaying()
         if revealingControls { revealControls() }
+    }
+
+    /// The player has landed on the seek target, so the periodic observer can
+    /// own the position again.
+    private func seekSettled() {
+        pendingSeekTarget = nil
     }
 
     func skip(by seconds: Double) {
@@ -1617,6 +1718,7 @@ final class PlayerModel {
     }
 
     func togglePictureInPicture() {
+        Task { await app.features.record(.pictureInPicture, kind: .used) }
         pictureInPicture.toggle()
     }
 
@@ -1684,6 +1786,15 @@ final class PlayerModel {
     func selectSubtitle(_ track: SubtitleTrack?) {
         subtitleChosen = true
         selectedSubtitle = track
+        if let track {
+            Task {
+                await app.features.record(
+                    track.provider == .community ? .subtitlesCommunity : .subtitlesProvider,
+                    kind: .used,
+                    detail: track.language
+                )
+            }
+        }
         loadSubtitles()
         revealControls()
     }
@@ -1728,6 +1839,11 @@ final class PlayerModel {
     }
 
     func selectEpisode(_ episode: Episode) async {
+        // The old episode's position is written before the request moves on.
+        // `recordIfDue` only runs every five seconds, so without this the last
+        // few seconds of an episode were lost every time the viewer picked the
+        // next one by hand — the resume point then pointed at the wrong moment.
+        record()
         request = PlaybackRequest(
             subject: request.subject,
             season: episode.season,
@@ -1757,6 +1873,17 @@ final class PlayerModel {
             return
         }
         await selectEpisode(next)
+    }
+
+    /// Whether this episode rolls into the next one.
+    ///
+    /// A computed read rather than stored state: the setting belongs to the
+    /// library, and a second copy in the player would drift the moment the
+    /// Settings screen changed it.
+    var autoPlayNext: Bool { app.settings.autoPlayNext }
+
+    func setAutoPlayNext(_ enabled: Bool) {
+        Task { await app.updateSettings { $0.autoPlayNext = enabled } }
     }
 
     // MARK: - Audio tracks
@@ -1944,6 +2071,9 @@ final class PlayerModel {
         guard let track = selectedSubtitle, let url = URL(string: track.url) else { return }
 
         let headers = MediaRequest.headers(cookie: selectedRendition?.cookie)
+        // Captured before the task, so an episode switch mid-download cannot
+        // write this episode's file under the next episode's key.
+        let scope = subtitleScope
         subtitleTask = Task { [weak self] in
             guard let self else { return }
             do {
@@ -1963,7 +2093,7 @@ final class PlayerModel {
                 // main actor, which the player stack occupies.
                 let cache = subtitleCache
                 let webVTT = try await Task.detached(priority: .utility) {
-                    let fileURL = try cache.prepare(track: track, contents: body)
+                    let fileURL = try cache.prepare(track: track, contents: body, scope: scope)
                     return try String(contentsOf: fileURL, encoding: .utf8)
                 }.value
                 guard !Task.isCancelled else { return }

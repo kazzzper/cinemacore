@@ -16,9 +16,15 @@ struct CinemacoreApp: App {
             ZStack {
                 // Screens capture the repository when they are constructed, so
                 // the root is not built until the catalog source is resolved.
+                //
+                // Deliberately *not* keyed on `repositoryGeneration`: an `.id`
+                // here tore down the whole `TabView`, so a provider switch reset
+                // every tab's navigation stack and dropped the viewer back to
+                // Home — and because the switch also cleared `bootstrapped`, the
+                // app went blank for the whole resolve. Each screen observes the
+                // generation itself and rebuilds only its own view model.
                 if app.bootstrapped {
                     RootView(app: app)
-                        .id(app.repositoryGeneration)
                 } else {
                     Theme.app.background.color.ignoresSafeArea()
                 }

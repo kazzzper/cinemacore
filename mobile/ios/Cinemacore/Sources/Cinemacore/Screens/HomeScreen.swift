@@ -6,6 +6,8 @@ struct HomeScreen: View {
     let app: AppModel
 
     @State private var model: HomeViewModel
+    /// The source generation `model` was built against, so a switch rebuilds it.
+    @State private var builtGeneration: Int
     @Environment(\.theme) private var theme
 
     /// Compact on purpose: art plus actions stay under 360pt, so a small screen
@@ -15,6 +17,7 @@ struct HomeScreen: View {
     init(app: AppModel) {
         self.app = app
         _model = State(initialValue: HomeViewModel(repository: app.repository))
+        _builtGeneration = State(initialValue: app.repositoryGeneration)
     }
 
     var body: some View {
@@ -42,6 +45,15 @@ struct HomeScreen: View {
         .navigationBarTitleDisplayMode(.inline)
         .refreshable { await model.load() }
         .task { await model.loadIfNeeded() }
+        // A source switch swaps the repository out from under this view model.
+        // Rebuilding it here — rather than remounting the whole navigation stack
+        // — is what lets the switch happen without losing where the viewer was.
+        .onChange(of: app.repositoryGeneration) { _, generation in
+            guard generation != builtGeneration else { return }
+            builtGeneration = generation
+            model = HomeViewModel(repository: app.repository)
+            Task { await model.load() }
+        }
     }
 
     @ViewBuilder

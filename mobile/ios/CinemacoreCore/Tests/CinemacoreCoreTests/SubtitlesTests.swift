@@ -220,6 +220,108 @@ struct SubtitleTracksTests {
         let tracks = [track("English", "https://cdn.test/en.srt")]
         #expect(SubtitleTracks.defaultTrack(in: tracks, isOriginalAudio: false, chosen: nil) == nil)
     }
+
+    /// The provider and the addon list whatever they matched first, which is
+    /// often not English. Starting there reads as captions in the wrong
+    /// language, so the default has to look for English rather than take the
+    /// head of the list.
+    @Test("English wins over list order")
+    func englishBeatsListOrder() {
+        let tracks = [
+            track("Spanish", "https://cdn.test/es.srt"),
+            track("English", "https://cdn.test/en.srt"),
+            track("French", "https://cdn.test/fr.srt"),
+        ]
+        #expect(SubtitleTracks.defaultTrack(in: tracks, isOriginalAudio: true, chosen: nil)
+            == tracks[1])
+    }
+
+    @Test("with no English track the first track is still the default")
+    func fallsBackToFirstWithoutEnglish() {
+        let tracks = [
+            track("Hindi", "https://cdn.test/hi.srt"),
+            track("Tamil", "https://cdn.test/ta.srt"),
+        ]
+        #expect(SubtitleTracks.defaultTrack(in: tracks, isOriginalAudio: true, chosen: nil)
+            == tracks.first)
+    }
+
+    @Test(
+        "every spelling the three sources emit is recognised as English",
+        arguments: ["English", "english", "en", "ENG", "en-US", "en_US", "English (US)", "English SDH"]
+    )
+    func englishSpellings(_ label: String) {
+        #expect(SubtitleTracks.isEnglish(label))
+    }
+
+    /// A label that merely contains the letters must not match: `Bengali`
+    /// contains "en" and would otherwise be mistaken for English.
+    @Test(
+        "a label that only contains the letters is not English",
+        arguments: ["Bengali", "French", "Spanish", "Tamil", "Hindi", "German"]
+    )
+    func nonEnglishSpellings(_ label: String) {
+        #expect(!SubtitleTracks.isEnglish(label))
+    }
+
+    /// The provider keys captions on a title-level resource id, so an episode
+    /// can be answered with the season's first file. The community search is
+    /// keyed on the season and episode, so on an episode its English track is
+    /// the one that was actually asked about this episode.
+    @Test("an episode starts on the community English track")
+    func communityWinsForEpisode() {
+        let provider = SubtitleTrack(
+            language: "English", url: "https://cdn.test/ep1.srt", format: "srt"
+        )
+        let community = SubtitleTrack(
+            language: "English", url: "https://cdn2.test/s1e3.srt",
+            format: "srt", provider: .community
+        )
+        let tracks = [provider, community]
+
+        #expect(SubtitleTracks.defaultTrack(
+            in: tracks, isOriginalAudio: true, chosen: nil, prefersCommunity: true
+        ) == community)
+        // A film keeps the provider's own track: both are title-keyed there.
+        #expect(SubtitleTracks.defaultTrack(
+            in: tracks, isOriginalAudio: true, chosen: nil
+        ) == provider)
+    }
+
+    /// A community track in another language must not displace a provider
+    /// English default just because it is community-sourced.
+    @Test("a non-English community track does not displace an English default")
+    func communityMustStillBeEnglish() {
+        let provider = SubtitleTrack(
+            language: "English", url: "https://cdn.test/en.srt", format: "srt"
+        )
+        let community = SubtitleTrack(
+            language: "Hindi", url: "https://cdn2.test/hi.srt",
+            format: "srt", provider: .community
+        )
+
+        #expect(SubtitleTracks.defaultTrack(
+            in: [provider, community], isOriginalAudio: true, chosen: nil,
+            prefersCommunity: true
+        ) == provider)
+    }
+
+    /// A viewer's own pick is never replaced, whatever the preference.
+    @Test("a chosen track beats the community preference")
+    func chosenBeatsCommunityPreference() {
+        let chosen = SubtitleTrack(
+            language: "French", url: "https://cdn.test/fr.srt", format: "srt"
+        )
+        let community = SubtitleTrack(
+            language: "English", url: "https://cdn2.test/en.srt",
+            format: "srt", provider: .community
+        )
+
+        #expect(SubtitleTracks.defaultTrack(
+            in: [chosen, community], isOriginalAudio: true, chosen: chosen,
+            prefersCommunity: true
+        ) == chosen)
+    }
 }
 
 @Suite("SubtitleCache")
@@ -275,6 +377,44 @@ struct SubtitleCacheTests {
         #expect(cache.fileURL(for: track) == cache.fileURL(for: track))
         #expect(!cache.fileURL(for: track).lastPathComponent.contains("/"))
         #expect(!cache.fileURL(for: track).lastPathComponent.contains(":"))
+    }
+
+    /// The reported defect: episode 3 played episode 1's captions.
+    ///
+    /// The provider keys captions on a title-level resource id and ignores the
+    /// episode for some titles, so two episodes answer with one identical URL.
+    /// Keyed on the track alone, the second episode reused the first one's
+    /// converted file and showed its dialogue. The scope is what separates them.
+    @Test("the same track URL used by two episodes gets two files")
+    func scopeSeparatesEpisodes() throws {
+        let (cache, directory) = makeCache()
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let track = SubtitleTrack(language: "English", url: "https://cdn.test/same.srt", format: "srt")
+        let episodeOne = try cache.prepare(
+            track: track,
+            contents: "1\n00:00:01,000 --> 00:00:02,000\nEpisode one line",
+            scope: "s1e1"
+        )
+        let episodeThree = try cache.prepare(
+            track: track,
+            contents: "1\n00:00:01,000 --> 00:00:02,000\nEpisode three line",
+            scope: "s1e3"
+        )
+
+        #expect(episodeOne != episodeThree)
+        #expect(try String(contentsOf: episodeOne, encoding: .utf8).contains("Episode one line"))
+        #expect(try String(contentsOf: episodeThree, encoding: .utf8).contains("Episode three line"))
+    }
+
+    @Test("an unscoped track keeps its original file name")
+    func unscopedNameIsUnchanged() {
+        let (cache, _) = makeCache()
+        let track = SubtitleTrack(language: "English", url: "https://x/a.srt", format: "srt")
+        #expect(
+            cache.fileURL(for: track)
+                == cache.fileURL(for: track, scope: nil)
+        )
     }
 
     /// The live provider URL is 642 characters; used verbatim it exceeded the
