@@ -65,10 +65,11 @@ The gateway serves MovieBox by default. `CINEMACORE_PROVIDER` selects the source
 |---|---|---|
 | `core/` + `server/` | Builds, tests green. Live catalog works. | `go build ./... && go test ./...` |
 | `mobile/ios/` | Builds to `Cinemacore.app`. 5 tabs, AVPlayer, PiP, downloads. | `swift test` (411 tests) + `xtool dev build` |
-| `mobile/android/` | Port in progress. Toolchain green. | `./gradlew :app:assembleDebug` + `:app:testDebugUnitTest` |
+| `mobile/android/` | Direct MovieBox source, Media3 player, downloads. Verified on a physical Samsung SM-G960F. | `./gradlew :app:assembleDebug` + `:app:testDebugUnitTest` |
 | `tools/tui/` | Placeholder | — |
 
-Neither mobile app has run on a device yet. Builds and tests are the evidence.
+The iOS app has not run on a device yet. Android has: the built-in direct source, home feed, detail,
+seasons, episodes and HEVC playback are verified on a Samsung SM-G960F.
 
 ## Architecture
 
@@ -142,10 +143,11 @@ git config core.hooksPath .githooks
 
 ## Known gaps
 
-- No device verification on either mobile surface.
+- No iOS device verification yet; Android direct playback is verified on a Samsung SM-G960F.
 - Downloads are direct progressive files only (HLS/DASH refused).
 - `core/store/library` is empty — watchlist/history live only in each app's store.
-- iOS uses hand-written request paths; Android uses the generated OpenAPI client.
+- iOS uses hand-written request paths; Android uses the generated OpenAPI client for the gateway
+  source and a hand-written client for the default built-in source.
 - `Subject.kind` is inconsistent between contract (`1`/`2`) and live responses (`"series"`).
 
 ## License

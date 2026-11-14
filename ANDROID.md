@@ -141,7 +141,10 @@ studio .
 The stable launcher is `~/.local/bin/studio -> /home/sammy/android-studio/bin/studio`. Gradle sync
 uses the checked-in wrapper and JDK 17.
 
-## 6. Gateway address
+## 6. Gateway address (optional)
+
+The built-in MovieBox source is the default and needs no gateway or `adb reverse`. The addresses
+below apply only when the gateway source is explicitly selected.
 
 - **Emulator:** `http://10.0.2.2:8080`
 - **Physical device:** `http://<host-LAN-IP>:8080`

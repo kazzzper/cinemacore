@@ -15,6 +15,7 @@ Guidelines every agent and human follows in this repo. `AGENTS.md` links here; i
 | [`06-testing.md`](06-testing.md) | Tests, golden vectors |
 | [`07-git-commits.md`](07-git-commits.md) | Commits & history — **enforced** by `.githooks/` |
 | [`08-comments.md`](08-comments.md) | Comments: the *why*, never the *what* |
+| [`09-platform-parity.md`](09-platform-parity.md) | iOS ⇄ Android parity — one feature, two surfaces |
 | [`sources.md`](sources.md) | Provenance for every rule above |
 
 ## Precedence

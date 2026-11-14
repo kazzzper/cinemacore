@@ -3,13 +3,18 @@
 ## Shape
 
 ```
-core/ (Go, pure)  ──►  server/ (HTTP)   ──►  remote clients (iOS, TUI)
+core/ (Go, pure)  ──►  server/ (HTTP)   ──►  remote clients (iOS, Android, TUI)
 ```
 
 **Dependency rule (CI-enforced):** `core/` imports nothing from `server/`, `mobile/`, or `tools/`. Everything flows inward to `core/`.
 
-Clients reach the core over HTTP. There is deliberately **no `gobind`/embedded-core path**: the iOS app
-signs natively in Swift (`mobile/ios/CinemacoreCore/Sources/CinemacoreCore/Signing.swift`), so no cgo or
+Clients that use the gateway reach the core over HTTP. Android's default built-in source instead
+signs and calls MovieBox directly from the device (`mobile/android/app/src/main/java/com/cinemacore/app/data/direct/`);
+the gateway remains a separately selectable source. On a failed six-second probe the resolver falls
+back to the labelled bundled demo catalog.
+
+There is deliberately **no `gobind`/embedded-core path**: the iOS app signs natively in Swift
+(`mobile/ios/CinemacoreCore/Sources/CinemacoreCore/Signing.swift`), so no cgo or
 macOS toolchain is required and the algorithm has exactly one implementation per language, pinned by
 `contracts/signing-vectors.json`. See `adr/0002`.
 
@@ -33,8 +38,12 @@ All gateway requests are signed in `core/sign`. The contract was implemented ind
 
 ## Connectivity ladder (clients)
 
-1. Direct signed request to the remote server (default).
+1. Direct signed request to the remote server (default for the gateway path).
 2. Loopback HTTP proxy (swift-nio on iOS, Kotlin on Android) only when 1 cannot work.
+
+Android's default is the built-in MovieBox source: it signs and calls MovieBox directly from the
+device, with no gateway and no loopback proxy. A six-second probe falls back to the labelled demo
+catalog when it fails or times out.
 
 Media and subtitle requests are **not** routed through either: the CDN expects only a `User-Agent` and
 the per-rendition `Cookie`, so they are fetched directly with header fields. The loopback proxy exists

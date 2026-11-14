@@ -30,3 +30,6 @@ node tasks/bin/tasks.mjs board     # regenerate BOARD.md
 - Register **before** claiming. One owner per task.
 - `done` requires the DoD in `AGENTS.md` §5.
 - Leave handoff notes in `progress/<agent>.md`, never only in chat.
+- **Feature tasks are cross-platform.** A task that adds or changes a feature is not `done` until
+  the other app has it, or a linked parity task exists. Update `docs/PARITY.md` in the same commit;
+  see `rules/09-platform-parity.md`.

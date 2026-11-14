@@ -55,6 +55,9 @@ node tasks/bin/tasks.mjs board            # regenerate BOARD.md
 - Register **before** claiming. One owner per task.
 - Update on every meaningful step. `done` requires the DoD (§5).
 - Cross-harness handoff: leave state in `tasks/progress/<agent>.md`, not in your head.
+- **Parity:** a feature lands on iOS *and* Android. When one ships first, register the counterpart
+  task and update [`docs/PARITY.md`](docs/PARITY.md) in the same session — see
+  [`rules/09-platform-parity.md`](rules/09-platform-parity.md).
 
 ## 3. Rules (follow or the change is rejected)
 
@@ -69,6 +72,7 @@ node tasks/bin/tasks.mjs board            # regenerate BOARD.md
 | [`rules/06-testing.md`](rules/06-testing.md) | Tests, golden vectors |
 | [`rules/07-git-commits.md`](rules/07-git-commits.md) | Conventional Commits (**enforced by hook**) |
 | [`rules/08-comments.md`](rules/08-comments.md) | Comments: the *why*, never the *what* |
+| [`rules/09-platform-parity.md`](rules/09-platform-parity.md) | iOS ⇄ Android parity — one feature, two surfaces |
 
 Provenance for every rule: [`rules/sources.md`](rules/sources.md).
 

@@ -206,3 +206,59 @@ PiP behaviour remain unverified because this host has no simulator or device.
 - 2026-10-25T08:18:54.409Z — done T-028: TMDB_API_KEY > Info.plist > StreamHype public key; Settings/README/ADR updated; live /configuration 200; 411 Swift tests, go test, xtool build green; device catalog load unverified
 - 2026-10-25T09:33:14.425Z — claimed T-029 — Hiding the player chrome must not resize the landscape picture
 - 2026-10-25T09:33:14.467Z — updated T-029 -> review: player box now uses a custom Layout: fullscreen takes the whole proposal, portrait stays 16:9, and overlays can no longer drive the surface's ideal ratio; xtool build green; device tap test pending
+- 2026-10-30T12:59:00.263Z — registered (opencode)
+- 2026-10-30T12:59:00.335Z — claimed T-030 — Android parity: iOS splash/icon, StreamHype web playback, edge levels and player lock
+
+## T-030 · Android parity with iOS (player, StreamHype, subtitles)
+
+**Status:** implementation complete on Android; unit tests green; on-device re-check of the last two
+tweaks (tap-to-hide chrome) blocked — the phone dropped off USB (`lsusb` shows no Samsung) and the
+user asked to ship without it.
+
+### Landed this pass
+
+- **StreamHype black picture fixed.** The embed lays every level out with `html,body{height:100%}`;
+  this WebView resolves percentages and `vh` against a 0 px layout viewport (width is fine,
+  `window.innerHeight` reports the real height). The page therefore collapsed to 0 px: audio played,
+  the video element had no height. A document-start script pins the root to
+  `window.innerHeight` px when the computed height is 0 and re-pins on resize; the frame chain
+  recovers and the picture renders in portrait and landscape. Verified on device before the
+  tap-to-hide change.
+- **Web chrome tap-to-hide.** `WebStreamView` gains an `onTap` that observes ACTION_UP without
+  consuming it, so the embed still gets play/pause; `PlayerScreen` toggles `webChromeVisible` and
+  auto-hides after `CONTROLS_HIDE_DELAY_MS`, matching the native HUD.
+- **Community subtitles ported** (`data/FreeSubtitles.kt`): Cinemeta id lookup, OpenSubtitles v3
+  addon listing, ISO-639-2/B aliases, episode-marker guard, release labels, ranking; `SubtitleTrack`
+  gains `source` + `provider`; `SubtitleTracks` holds the merge/default rules; the player hydrates
+  community tracks after load, starts on English (community first for a numbered episode), never
+  replaces a viewer's pick, and the sheet shows searching / found / none-with-retry.
+- `DetailScreen` was missing the `IconButton` import for the per-episode download button; build was
+  red, fixed.
+
+### Verification
+
+- `./gradlew --offline :app:testDebugUnitTest` — green.
+- `:app:assembleDebug` — green.
+- `:app:lintDebug` — cannot resolve `material-icons-extended-desktop` offline in this environment
+  (dependency resolution, not a code finding).
+
+### Parity process
+
+- Added `rules/09-platform-parity.md`, `docs/PARITY.md` (live matrix) and wired both into
+  `AGENTS.md`, `rules/README.md` and `tasks/README.md`. New gap registered as **T-032**
+  (Android progressive playback of an in-progress download).
+- 2026-11-14T06:44:37.905Z — updated T-030 -> review: Android port complete: StreamHype viewport fix, web chrome tap-to-hide, community subtitles (Cinemeta + OpenSubtitles v3) with ported tests, per-episode downloads. Unit tests and assembleDebug green; device re-check blocked (no phone on USB).
+- 2026-11-14T06:44:37.983Z — updated T-032: Registered by the parity rule: iOS ships progressive playback over a loopback range server; Android still plays only finished files.
+
+## Hot fix · Home pull-to-refresh + StreamHype build repair
+
+**Status:** done on Android; `:app:testDebugUnitTest` and `:app:assembleDebug` green. Device was
+disconnected before the gesture could be checked on the SM-G960F.
+
+- Home now refreshes by pulling the page down, matching iOS `.refreshable`. `HomeViewModel.refresh()`
+  keeps the loaded page on screen while the new one loads; `PullToRefreshBox` owns the indicator.
+- The reload `IconButton` (and its `home_action_refresh` string) is removed, so the header is just
+  the wordmark and no control sits beside it.
+- `WebStreamView` was red on the shared tree (another harness's in-flight web-message listener):
+  `WebMessageCompat` and `JavaScriptReplyProxy` are top-level `androidx.webkit` types, not nested in
+  `WebViewCompat`. Corrected the references and imports; no behaviour change.

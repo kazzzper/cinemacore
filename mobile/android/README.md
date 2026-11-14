@@ -1,23 +1,23 @@
 # mobile/android
 
 Kotlin + Jetpack Compose client. The Android implementation is a behavioural port of the iOS app, not
-a line-by-line translation: Android uses Media3/ExoPlayer, a gateway-first data layer, and Android
-background-download rules.
+a line-by-line translation: Android uses Media3/ExoPlayer, a direct-first MovieBox data layer with a
+labelled demo fallback, and Android background-download rules.
 
 This README is the **Android source of truth**. Do not document a feature here until it exists in
 `app/src/main`.
 
 ---
 
-## Status (verified 2026-10-25)
+## Status (verified 2026-10-30)
 
 | Check | Result |
 |---|---|
 | `./gradlew :app:assembleDebug` | Builds the debug APK |
 | Android Studio | Opens this directory directly; Gradle sync succeeds |
 | Unit tests | `./gradlew :app:testDebugUnitTest` |
-| Device/emulator run | Blocked until an AVD or device exists |
-| Gateway integration | Gateway at `10.0.2.2:8080` from the emulator |
+| Device run | Physical Samsung SM-G960F: home feed, detail, seasons, episodes, HEVC playback |
+| Gateway integration | Optional; gateway at `10.0.2.2:8080` from the emulator. The default direct source needs none |
 
 Toolchain setup of record is [`ANDROID.md`](../../ANDROID.md): JDK 17, Android CLI, SDK platform
 **37.0**, build-tools 36.0.0. Use `android sdk`; `sdkmanager` is deprecated. The Gradle wrapper **is
@@ -49,6 +49,7 @@ app/src/main/java/com/cinemacore/app/
   AppContainer.kt               Manual constructor DI at the app boundary
   data/
     api/                        GENERATED OpenAPI client (do not edit)
+    direct/                     Direct MovieBox source (signing, session, recovery)
     GatewayCatalogRepository.kt Gateway-backed CatalogRepository
     StreamHypeCatalogRepository.kt Direct TMDB catalog + web-embed playback
     DemoCatalogRepository.kt    Offline fallback catalog
@@ -88,9 +89,13 @@ app/src/main/java/com/cinemacore/app/
   field names. If the contract changes, regenerate and fix mapping/tests in the same change.
 - Screen code never consumes generated Retrofit models directly. `CatalogRepository` maps them to
   domain types and returns typed `CinemacoreError`s.
-- Android uses the **gateway** for the MovieBox catalog. The iOS direct native signing/session/stream
-  recovery path is not ported; do not reimplement provider protocol replay in Kotlin.
-- StreamHype is the exception: Android talks to TMDB directly and opens `kind: web` embeds in a
+- The **built-in source is the default**. `data/direct/` is the Android port of the iOS native
+  signing/session/stream recovery path; it talks to the live MovieBox API host directly, with no
+  gateway and no `adb reverse`.
+- A six-second probe guards the built-in source at launch. If it fails or times out, the resolver
+  falls back to the bundled demo catalog and labels it as demo data, so a dead provider never looks
+  live or stalls launch. The gateway is selectable, not an automatic fallback.
+- StreamHype is web-only: Android talks to TMDB directly and opens `kind: web` embeds in a
   WebView. Key precedence is the same as iOS: user setting > `TMDB_API_KEY` build/env value >
   StreamHype's published client key. It works without setup.
 - A user-entered TMDB key overrides the public fallback.
@@ -153,7 +158,8 @@ cd mobile/android
 ./gradlew :app:lintDebug              # Android lint
 ```
 
-Gateway:
+The built-in source needs no gateway: it talks to MovieBox directly and needs no `adb reverse`.
+The gateway remains a separately selectable source:
 
 ```bash
 # repo root
@@ -163,8 +169,8 @@ go run ./cmd/cinemacore
 - Emulator → `http://10.0.2.2:8080`
 - Physical device → `http://<host-LAN-IP>:8080`
 
-The app falls back to the bundled demo catalog when the gateway does not answer and labels the active
-source on Home and in Settings.
+The app falls back to the bundled demo catalog when the selected source does not answer and labels
+the active source on Home and in Settings.
 
 ---
 

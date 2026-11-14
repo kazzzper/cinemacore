@@ -434,23 +434,34 @@
     {
       "id": "T-033",
       "title": "iOS: download quality picker, progressive readiness, hev1 repair on failure, StreamHype resume",
-      "status": "review",
+      "status": "done",
       "module": "mobile/ios",
       "owner": "dsh-bugfix",
       "deps": [],
       "acceptance": "A download resolves its ladder and shows qualities before queueing; an in-progress download is playable while totalBytes is still unknown; an hev1 item that fails to open is repaired before the failure is shown; a web embed seeks to its stored position and reports its clock; swift test + xtool build green",
-      "updatedAt": "2026-11-14T07:02:24.528Z",
+      "updatedAt": "2026-11-14T09:33:32.497Z",
       "links": []
     },
     {
       "id": "T-034",
       "title": "Android parity: StreamHype web resume position",
-      "status": "todo",
+      "status": "review",
       "module": "mobile/android",
       "owner": null,
       "deps": [],
       "acceptance": "The web player reports the embed's clock and reopens at the stored position, matching iOS; assembleDebug green",
-      "updatedAt": "2026-11-14T07:02:18.358Z",
+      "updatedAt": "2026-11-14T09:30:19.856Z",
+      "links": []
+    },
+    {
+      "id": "T-035",
+      "title": "Android: a finished download opens before any provider round trip",
+      "status": "review",
+      "module": "android",
+      "owner": null,
+      "deps": [],
+      "acceptance": "PlayerViewModel.load checks the queue before repository.play; compileDebugKotlin green",
+      "updatedAt": "2026-11-14T09:33:32.432Z",
       "links": []
     }
   ]
