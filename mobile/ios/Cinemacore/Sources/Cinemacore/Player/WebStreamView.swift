@@ -157,15 +157,23 @@ struct WebStreamView: UIViewRepresentable {
 
     /// Watches the page's own `<video>` and reports its clock.
     ///
-    /// Injected per frame because the embed players live inside one. The seek
-    /// waits for `loadedmetadata` — assigning `currentTime` before the media is
-    /// seekable is ignored by browsers — and a position near the very start is
-    /// left alone so "resume" does not rewind a fresh playback.
+    /// Injected per frame because the embed players live inside one. A single
+    /// seek at `loadedmetadata` was not enough: these players create or reload
+    /// their `<video>` after document start and some reset the clock to zero as
+    /// they initialise, so the seek was routinely overwritten and every
+    /// StreamHype title restarted. The target is therefore re-asserted on every
+    /// media event and by a short poll until the page's own clock actually
+    /// reaches it.
     private static func progressScript(startAt: Double?) -> String {
         let seconds = String(format: "%.3f", max(0, startAt ?? 0))
         return """
         (function () {
           var start = \(seconds);
+          // A fresh playback has nothing to settle; only a resume does.
+          var settled = !(start > 0);
+          var watched = null;
+          var deadline = Date.now() + 30000;
+
           function activeVideo() {
             var list = document.querySelectorAll('video');
             for (var i = 0; i < list.length; i++) {
@@ -173,19 +181,52 @@ struct WebStreamView: UIViewRepresentable {
             }
             return null;
           }
+          function settle() { settled = true; }
+          function trySeek() {
+            var v = activeVideo();
+            // These players build or reload their `<video>` after document
+            // start; a new element is a new clock, so the stored position
+            // applies to it too.
+            if (v && v !== watched) {
+              watched = v;
+              if (start > 0) {
+                settled = false;
+                deadline = Date.now() + 30000;
+              }
+            }
+            if (settled || !v) return;
+            if (Date.now() > deadline) { settle(); return; }
+            if (!isFinite(v.duration) || v.duration <= 0) return;
+            // Nothing is left to resume this close to the end.
+            if (start >= v.duration - 10) { settle(); return; }
+            // At or past the target: either the seek landed or the browser
+            // restored the position itself. Re-seeking would rewind the viewer.
+            if (v.currentTime >= start - 2) { settle(); return; }
+            try { v.currentTime = start; } catch (e) { settle(); }
+          }
           function report(v) {
-            if (!v || !isFinite(v.duration)) return;
+            if (!v || !isFinite(v.duration) || v.duration <= 0 || v.currentTime <= 0) return;
             try {
               window.webkit.messageHandlers.\(progressHandler)
                 .postMessage({ p: v.currentTime, d: v.duration });
             } catch (e) {}
           }
-          document.addEventListener('loadedmetadata', function () {
-            var v = activeVideo();
-            if (v && start > 0 && isFinite(v.duration) && v.duration > start + 5) {
-              v.currentTime = start;
-            }
-          }, true);
+
+          // Media events do not bubble, but a capture listener on the document
+          // still runs for them.
+          var events = ['loadedmetadata', 'loadeddata', 'durationchange',
+                        'canplay', 'playing', 'timeupdate'];
+          for (var i = 0; i < events.length; i++) {
+            document.addEventListener(events[i], trySeek, true);
+          }
+          // The poll must outlive a single element, because a replaced one
+          // resets `settled`; it retires with the script's watch window.
+          var watchUntil = Date.now() + 30000;
+          var poll = setInterval(function () {
+            trySeek();
+            if (Date.now() > watchUntil) clearInterval(poll);
+          }, 400);
+
           setInterval(function () {
             var v = activeVideo();
             if (v && !v.paused) report(v);

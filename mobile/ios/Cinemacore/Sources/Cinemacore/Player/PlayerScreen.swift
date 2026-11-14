@@ -220,9 +220,10 @@ struct PlayerScreen: View {
             )
             // The embed URL can be identical from one episode to the next, and
             // the seek position is injected once when the view is built. Keying
-            // the view on both forces a rebuild when the target moves, which is
-            // the only way a second episode resumes at its own position.
-            .id("\(url.absoluteString)#\(model.webResumeSeconds ?? 0)")
+            // the view on the playback generation forces a rebuild for every
+            // embed, so a second episode on the same page still reloads and
+            // seeks instead of showing the previous episode's video.
+            .id("\(url.absoluteString)#\(model.webPlaybackGeneration)")
             .accessibilityLabel("Web player")
                 // The embed owns the transport, so none of ``controls`` — and
                 // with it the player's only exit — is drawn on this branch.

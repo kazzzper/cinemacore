@@ -139,6 +139,14 @@ final class PlayerModel {
     /// A web embed owns its own clock, so unlike a native item there is no
     /// player position to seek: the page is told to seek itself.
     private(set) var webResumeSeconds: Double?
+    /// Bumped for every embed playback, so the screen rebuilds the web view
+    /// even when two episodes resolve to the same URL.
+    ///
+    /// Providers hand the same embed page to consecutive episodes of a series.
+    /// Keyed only on the URL and the resume point, a second episode that
+    /// resolves to the same page would keep the first one's web view — and its
+    /// video — on screen while the new episode's clock was never loaded.
+    private(set) var webPlaybackGeneration = 0
 
     /// The episode (or movie) playing right now; an episode switch replaces it.
     private(set) var request: PlaybackRequest
@@ -588,6 +596,15 @@ final class PlayerModel {
                 // a position that arrived after the view existed could never be
                 // injected — the embed would start at zero and stay there.
                 webResumeSeconds = await resume(restartAt)
+                // The web path returns before `rebuild`, so the previous
+                // episode's clock and its write throttle would otherwise carry
+                // over: the new episode's first report could be swallowed, and
+                // the write that did happen would land the old episode's
+                // position under the new episode's history key.
+                position = 0
+                duration = 0
+                webRecordedAt = nil
+                webPlaybackGeneration += 1
                 webStreamURL = url
                 return
             }

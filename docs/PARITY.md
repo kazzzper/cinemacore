@@ -11,12 +11,14 @@ Legend: **✅** shipped · **🟡** partial / different behaviour · **⬜** mis
 | Source picker (Built-in / StreamHype / Gateway / Demo) | ✅ | ✅ | Android keeps the previous catalogue on screen while switching |
 | Provider switch keeps navigation | ✅ | ✅ | Screens re-key on `repositoryGeneration` |
 | Home rails + featured | ✅ | ✅ | |
+| Home pull-to-refresh | ✅ | ✅ | iOS `.refreshable`; Android `PullToRefreshBox` — the reload icon is gone |
 | Search + suggestions | ✅ | ✅ | |
 | Detail: seasons, episodes, dub switch, download | ✅ | ✅ | Per-episode download button on both |
 | Downloads: queue, pause/resume, local playback | ✅ | ✅ | Android `DownloadService` (foreground dataSync) |
 | Progressive playback of an in-progress download | ✅ | ⬜ | iOS: loopback range server over `.part`; readiness no longer depends on a known total size; Android plays only finished files — T-032 |
+| A finished download starts without a provider round trip | ✅ | ✅ | Both check the queue first and open the file; Android used to ask the provider first, so a downloaded episode waited and failed offline |
 | Download quality choice before queueing | ✅ | ✅ | iOS resolves the episode's ladder and shows it in a sheet; Android `DownloadQualityDialog` |
-| StreamHype resume position | ✅ | ⬜ | iOS injects a seek/report script into the embed and stores the position with native resume rows — T-034 |
+| StreamHype resume position | ✅ | ✅ | Both inject a seek/report script into the embed and store the position with native resume rows. The seek is re-asserted on every media event and by a short poll, because embed players create or reload their `<video>` and overwrite a single `loadedmetadata` seek |
 | `hev1` container repaired before a failed item is blamed | ✅ | n/a | Media3 reads `hev1` as served, so Android needs no rename |
 | History | ✅ | ✅ | |
 | Watchlist | ✅ | ✅ | |
