@@ -213,6 +213,14 @@ struct PlayerScreen: View {
         if let url = model.webStreamURL {
             WebStreamView(url: url)
                 .accessibilityLabel("Web player")
+                // The embed owns the transport, so none of ``controls`` — and
+                // with it the player's only exit — is drawn on this branch.
+                // The navigation bar is hidden for every player, so without this
+                // overlay a StreamHype title could not be left at all.
+                .overlay(alignment: .topLeading) {
+                    webExitButton
+                        .padding(Layout.spacing3)
+                }
         } else {
             ZStack {
                 // Captions are an overlay on the picture, never a sibling of it.
@@ -637,6 +645,29 @@ struct PlayerScreen: View {
                 model.toggleFullscreen()
             }
         }
+    }
+
+    /// The exit for a web embed, which has no native chrome to carry one.
+    ///
+    /// Always visible rather than tap-revealed: the embed consumes taps itself,
+    /// so a hidden control could not be brought back. The scrim is what keeps
+    /// the glyph legible over a bright frame — the embed players use every
+    /// corner, and a bare white chevron would vanish on some titles.
+    private var webExitButton: some View {
+        Button { dismiss() } label: {
+            HStack(spacing: 2) {
+                Image(systemName: "chevron.backward")
+                    .font(.system(size: 16, weight: .semibold))
+                Text("Back")
+                    .font(Typography.button)
+            }
+            .foregroundStyle(theme.textPrimary.color)
+            .padding(.horizontal, Layout.spacing3)
+            .frame(minHeight: Layout.minimumTarget)
+            .background(.black.opacity(0.55), in: Capsule())
+        }
+        .accessibilityLabel("Back")
+        .accessibilityHint("Leaves the player and returns to the previous screen")
     }
 
     /// The badge that says these bytes are on the device, which is the promise
