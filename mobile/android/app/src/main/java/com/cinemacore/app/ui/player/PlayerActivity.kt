@@ -39,6 +39,7 @@ class PlayerActivity : ComponentActivity() {
     private lateinit var viewModel: PlayerViewModel
     private lateinit var playerView: PlayerView
     private val sourceRect = Rect()
+    private var leavingByBack = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -71,7 +72,10 @@ class PlayerActivity : ComponentActivity() {
                 PlayerScreen(
                     viewModel = viewModel,
                     playerView = playerView,
-                    onBack = { finish() },
+                    onBack = {
+                        leavingByBack = true
+                        finish()
+                    },
                     onEnterPip = ::enterPip,
                 )
             }
@@ -162,6 +166,10 @@ class PlayerActivity : ComponentActivity() {
 
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
+        // Back finishes the player. Without this guard the system still calls
+        // onUserLeaveHint on the way out, turning "close" into a PiP window
+        // that keeps playing over the screen the user just returned to.
+        if (leavingByBack || isFinishing || isDestroyed) return
         if (::viewModel.isInitialized && viewModel.state.isPlaying) enterPip()
     }
 

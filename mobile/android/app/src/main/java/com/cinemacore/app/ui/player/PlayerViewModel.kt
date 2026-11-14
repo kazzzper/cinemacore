@@ -22,7 +22,13 @@ import com.cinemacore.app.AppContainer
 import com.cinemacore.app.R
 import com.cinemacore.app.data.DownloadRequest
 import com.cinemacore.app.data.DownloadService
+import com.cinemacore.app.data.Feature
+import com.cinemacore.app.data.FeatureEvent
+import com.cinemacore.app.data.FreeSubtitleRequest
+import com.cinemacore.app.data.FreeSubtitles
 import com.cinemacore.app.domain.CinemacoreError
+import com.cinemacore.app.domain.DownloadItem
+import com.cinemacore.app.domain.DownloadStatus
 import com.cinemacore.app.domain.Dub
 import com.cinemacore.app.domain.Episode
 import com.cinemacore.app.domain.LoadState
@@ -33,7 +39,10 @@ import com.cinemacore.app.domain.PlaybackRequest
 import com.cinemacore.app.domain.Season
 import com.cinemacore.app.domain.StreamRendition
 import com.cinemacore.app.domain.Subject
+import com.cinemacore.app.domain.SubtitleAvailability
+import com.cinemacore.app.domain.SubtitleProvider
 import com.cinemacore.app.domain.SubtitleTrack
+import com.cinemacore.app.domain.SubtitleTracks
 import java.io.File
 import java.util.Locale
 import kotlinx.coroutines.CancellationException
@@ -49,12 +58,25 @@ data class PlayerUiState(
     val streams: List<StreamRendition> = emptyList(),
     val subtitles: List<SubtitleTrack> = emptyList(),
     val webUrl: String? = null,
+    /**
+     * Bumped for every embed playback, so the screen rebuilds the web view even
+     * when two episodes resolve to the same URL.
+     *
+     * Providers hand the same embed page to consecutive episodes of a series.
+     * Keyed only on the URL, a second episode would keep the first one's web
+     * view — and its video — on screen while the new clock was never loaded.
+     */
+    val webGeneration: Int = 0,
     val rendition: StreamRendition? = null,
     val positionMs: Long = 0,
     val durationMs: Long = 0,
     val isPlaying: Boolean = false,
     val isBuffering: Boolean = true,
+    /** User intent, unlike [isPlaying] which waits for the first frame. */
+    val playWhenReady: Boolean = false,
     val selectedSubtitle: SubtitleTrack? = null,
+    /** What the community caption lookup has to offer, for the picker. */
+    val subtitleAvailability: SubtitleAvailability = SubtitleAvailability.IDLE,
     val speed: Float = 1f,
     val seasons: List<Season> = emptyList(),
     val dubs: List<Dub> = emptyList(),
@@ -67,6 +89,19 @@ data class PlayerUiState(
     val autoPlayNext: Boolean = true,
     val fillScreen: Boolean = false,
     val resumePositionMs: Long = 0,
+    val volume: Float = 1f,
+    val isMuted: Boolean = false,
+    val isLocked: Boolean = false,
+    val unlockHintVisible: Boolean = false,
+    val skipIndicator: SkipIndicator? = null,
+    /** Bumped by every action that reveals the chrome, so auto-hide restarts. */
+    val controlsEpoch: Int = 0,
+)
+
+/** The transient pill a double-tap skip leaves on the picture. */
+data class SkipIndicator(
+    val forward: Boolean,
+    val seconds: Int = 10,
 )
 
 /**
@@ -87,6 +122,8 @@ class PlayerViewModel(
             speed = initialSettings.playbackSpeed.coerceIn(MIN_SPEED, MAX_SPEED),
             autoPlayNext = initialSettings.autoPlayNext,
             fillScreen = initialSettings.playerFillScreen,
+            volume = container.player.volume.coerceIn(0f, 1f),
+            isMuted = container.player.volume <= 0f,
         ),
     )
         private set
@@ -100,12 +137,27 @@ class PlayerViewModel(
     private var loadJob: Job? = null
     private var progressJob: Job? = null
     private var settingsJob: Job? = null
+    private var skipJob: Job? = null
+    /// The web embed reports on its own cadence; five seconds matches the
+    /// native recorder so both write history at the same rate.
+    private var lastWebRecordAt = 0L
+    private var unlockJob: Job? = null
     private var subtitleRequestToken = 0
+    /** A viewer's pick is never replaced by a late default or merge. */
+    private var subtitleChosen = false
+    private var lastAudibleVolume = container.player.volume.takeIf { it > 0f } ?: 1f
+
+    private val freeSubtitles: FreeSubtitles
+        get() = container.freeSubtitles
 
     private val listener = object : Player.Listener {
         override fun onIsPlayingChanged(isPlaying: Boolean) {
-            state = state.copy(isPlaying = isPlaying)
+            state = state.copy(isPlaying = isPlaying, playWhenReady = player.playWhenReady)
             if (!isPlaying) recordProgress()
+        }
+
+        override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+            state = state.copy(playWhenReady = playWhenReady)
         }
 
         override fun onPlaybackStateChanged(playbackState: Int) {
@@ -118,7 +170,10 @@ class PlayerViewModel(
                 isBuffering = playbackState == Player.STATE_BUFFERING,
             )
             if (playbackState == Player.STATE_ENDED) {
-                state = state.copy(isPlaying = false, controlsVisible = true)
+                state = state.copy(
+                    isPlaying = false,
+                    controlsVisible = !state.isLocked,
+                )
                 handleEnded()
             }
         }
@@ -176,7 +231,10 @@ class PlayerViewModel(
     fun open(request: PlaybackRequest) {
         recordProgress()
         loadJob?.cancel()
+        skipJob?.cancel()
+        unlockJob?.cancel()
         subtitleRequestToken++
+        subtitleChosen = false
         selectedSubtitleFile = null
         activeUri = null
         activeRendition = null
@@ -189,12 +247,15 @@ class PlayerViewModel(
             autoPlayNext = previous.autoPlayNext,
             fillScreen = previous.fillScreen,
             fullscreen = previous.fullscreen,
-            controlsVisible = true,
             inPip = previous.inPip,
             subject = previous.subject.takeIf { sameSubject },
             dubs = previous.dubs.takeIf { sameSubject }.orEmpty(),
             seasons = previous.seasons.takeIf { sameSubject }.orEmpty(),
             isBuffering = true,
+            volume = previous.volume,
+            isMuted = previous.isMuted,
+            isLocked = previous.isLocked,
+            controlsVisible = !previous.isLocked,
         )
         player.stop()
         player.clearMediaItems()
@@ -218,7 +279,10 @@ class PlayerViewModel(
                 player.seekTo(0)
                 player.play()
             }
-            player.isPlaying -> player.pause()
+            // `isPlaying` is false while the first frames buffer, even though
+            // the user already asked to play. Keying on intent keeps the pause
+            // button honest during a slow start.
+            player.playWhenReady -> player.pause()
             else -> player.play()
         }
     }
@@ -239,6 +303,91 @@ class PlayerViewModel(
         seekTo(player.currentPosition + deltaMs)
     }
 
+    /**
+     * A double-tap on a side skips ten seconds, with the same transient pill
+     * iOS uses so the finger covering the scrubber still sees what happened.
+     */
+    fun doubleTapped(forward: Boolean) {
+        if (state.isLocked || state.webUrl != null) return
+        val seconds = if (forward) SKIP_STEP_MS else -SKIP_STEP_MS
+        seekBy(seconds)
+        state = state.copy(
+            skipIndicator = SkipIndicator(
+                forward = forward,
+                seconds = (SKIP_STEP_MS / 1_000).toInt(),
+            ),
+        )
+        skipJob?.cancel()
+        skipJob = viewModelScope.launch {
+            delay(SKIP_PILL_MS)
+            state = state.copy(skipIndicator = null)
+        }
+    }
+
+    /**
+     * A tap on the picture toggles the chrome, unless the lock owns the surface:
+     * then the only thing a tap may reveal is the way out of the lock.
+     */
+    fun surfaceTapped() {
+        if (state.inPip) return
+        if (state.isLocked) {
+            showUnlockHint()
+            return
+        }
+        setControlsVisible(!state.controlsVisible)
+    }
+
+    fun toggleLock() {
+        val locked = !state.isLocked
+        unlockJob?.cancel()
+        skipJob?.cancel()
+        state = state.copy(
+            isLocked = locked,
+            unlockHintVisible = false,
+            controlsVisible = !locked,
+            skipIndicator = null,
+            controlsEpoch = state.controlsEpoch + 1,
+        )
+    }
+
+    private fun showUnlockHint() {
+        if (!state.isLocked) return
+        state = state.copy(unlockHintVisible = true)
+        unlockJob?.cancel()
+        unlockJob = viewModelScope.launch {
+            delay(UNLOCK_HINT_MS)
+            state = state.copy(unlockHintVisible = false)
+        }
+    }
+
+    /**
+     * Edge drags adjust the ExoPlayer level rather than the device stream, which
+     * is what the right side of an iOS player does. [revealsControls] is false
+     * for the gesture: the level has its own readout, and flashing the chrome
+     * over a film the viewer is adjusting would cover it.
+     */
+    fun setVolume(value: Float, revealsControls: Boolean = true) {
+        val clamped = value.coerceIn(0f, 1f)
+        player.volume = clamped
+        if (clamped > 0f) lastAudibleVolume = clamped
+        val reveal = revealsControls && !state.isLocked && !state.inPip
+        state = state.copy(
+            volume = clamped,
+            isMuted = clamped <= 0f,
+            controlsVisible = if (reveal) true else state.controlsVisible,
+            controlsEpoch = if (reveal) state.controlsEpoch + 1 else state.controlsEpoch,
+        )
+    }
+
+    fun toggleMute() {
+        if (state.isMuted || state.volume <= 0f) {
+            setVolume(lastAudibleVolume)
+        } else {
+            lastAudibleVolume = state.volume
+            setVolume(0f)
+        }
+    }
+
     fun setSpeed(speed: Float) {
         val clamped = speed.coerceIn(MIN_SPEED, MAX_SPEED)
         state = state.copy(speed = clamped)
@@ -249,7 +398,12 @@ class PlayerViewModel(
     }
 
     fun setControlsVisible(visible: Boolean) {
-        if (!state.inPip) state = state.copy(controlsVisible = visible)
+        if (!state.inPip && !state.isLocked) {
+            state = state.copy(
+                controlsVisible = visible,
+                controlsEpoch = if (visible) state.controlsEpoch + 1 else state.controlsEpoch,
+            )
+        }
     }
 
     fun setFullscreen(fullscreen: Boolean) {
@@ -257,9 +411,12 @@ class PlayerViewModel(
     }
 
     fun setPipMode(inPip: Boolean) {
+        if (inPip) record(Feature.PICTURE_IN_PICTURE, FeatureEvent.Kind.USED)
         state = state.copy(
             inPip = inPip,
-            controlsVisible = if (inPip) false else true,
+            // Leaving PiP must not bypass the lock that was set before it.
+            controlsVisible = if (inPip) false else !state.isLocked,
+            controlsEpoch = state.controlsEpoch + 1,
         )
     }
 
@@ -284,6 +441,21 @@ class PlayerViewModel(
     }
 
     fun selectSubtitle(track: SubtitleTrack?) {
+        subtitleChosen = true
+        applySubtitle(track)
+    }
+
+    /**
+     * Re-runs the community lookup after it failed, without disturbing
+     * playback.
+     */
+    fun retryCommunitySubtitles() {
+        if (state.webUrl != null || state.subtitleAvailability == SubtitleAvailability.LOADING) return
+        state = state.copy(subtitleAvailability = SubtitleAvailability.IDLE)
+        hydrateCommunitySubtitles(state.request)
+    }
+
+    private fun applySubtitle(track: SubtitleTrack?) {
         if (state.webUrl != null) return
         subtitleRequestToken++
         if (track == null) {
@@ -298,7 +470,10 @@ class PlayerViewModel(
                 Uri.parse(track.url).path?.let(::File)?.takeIf { it.exists() }
             } else {
                 try {
-                    container.subtitleCache.cached(track, state.rendition?.cookie)
+                    val scope = state.request.let { req ->
+                        if (req.episode != null && req.episode > 0) "${req.season ?: 0}:${req.episode}" else null
+                    }
+                    container.subtitleCache.cached(track, state.rendition?.cookie, scope)
                 } catch (cancelled: CancellationException) {
                 throw cancelled
                 } catch (error: Exception) {
@@ -314,6 +489,15 @@ class PlayerViewModel(
             }
             selectedSubtitleFile = file
             state = state.copy(selectedSubtitle = track, notice = null)
+            record(
+                feature = if (track.provider == SubtitleProvider.COMMUNITY) {
+                    Feature.SUBTITLES_COMMUNITY
+                } else {
+                    Feature.SUBTITLES_PROVIDER
+                },
+                kind = FeatureEvent.Kind.USED,
+                detail = track.language,
+            )
             reprepare()
         }
     }
@@ -421,8 +605,12 @@ class PlayerViewModel(
 
     /** Called by the activity when it leaves the foreground; still safe to call after PiP. */
     fun recordProgress() {
-        if (state.webUrl != null) return
-        val request = state.request
+        if (state.webUrl != null) {
+            // A web embed has no ExoPlayer behind it; its position is whatever
+            // the page last reported, and that is still a resume point.
+            recordResume(state.request, state.positionMs, state.durationMs)
+            return
+        }
         val nativeMedia = player.mediaItemCount > 0
         val position = if (nativeMedia) player.currentPosition else state.positionMs
         val duration = if (nativeMedia) {
@@ -430,6 +618,29 @@ class PlayerViewModel(
         } else {
             state.durationMs
         }
+        recordResume(state.request, position, duration)
+    }
+
+    /**
+     * A position reported by the embed page's own clock.
+     *
+     * The web player owns playback, so the page is the only observer: the
+     * injected script posts its `currentTime`/`duration` and this stores them in
+     * the same resume rows the native player writes, so a StreamHype title and a
+     * downloaded one land on the same History row.
+     */
+    fun webProgress(positionMs: Long, durationMs: Long) {
+        if (state.webUrl == null) return
+        if (durationMs <= 0 || positionMs <= 0) return
+        val clamped = positionMs.coerceIn(0, durationMs)
+        state = state.copy(positionMs = clamped, durationMs = durationMs)
+        val now = System.currentTimeMillis()
+        if (now - lastWebRecordAt < WEB_RECORD_INTERVAL_MS) return
+        lastWebRecordAt = now
+        recordResume(state.request, clamped, durationMs)
+    }
+
+    private fun recordResume(request: PlaybackRequest, position: Long, duration: Long) {
         if (duration <= 0 || position < RESUME_MIN_POSITION_MS) return
         if (position >= duration - RESUME_END_GUARD_MS) return
         val subject = state.subject?.takeIf { it.id == request.subjectId } ?: Subject(
@@ -486,6 +697,14 @@ class PlayerViewModel(
             }
         }
 
+        // A finished copy outranks the network. Tapping a downloaded episode
+        // used to ask the provider first, so it waited on a round trip — and
+        // failed outright with no connection — for bytes already on disk.
+        downloadedCopy(request)?.let { item ->
+            playLocal(Uri.fromFile(container.downloads.fileFor(item)), request, item)
+            return
+        }
+
         val info = try {
             container.repository.play(request.subjectId, request.season, request.episode)
         } catch (cancelled: CancellationException) {
@@ -504,6 +723,7 @@ class PlayerViewModel(
             streams = info.streams,
             subtitles = info.subtitles,
         )
+        record(Feature.PLAYBACK, FeatureEvent.Kind.USED, info.streams.firstOrNull()?.quality)
 
         val web = PlaybackPolicy.webRendition(info.streams)
         if (web != null) {
@@ -511,10 +731,14 @@ class PlayerViewModel(
             player.clearMediaItems()
             state = state.copy(
                 webUrl = web.url,
+                webGeneration = state.webGeneration + 1,
                 rendition = null,
                 isPlaying = false,
                 isBuffering = false,
-                positionMs = 0,
+                // The embed cannot be told to seek before it has a clock, and
+                // the page is handed its start position with the view, so the
+                // stored point is read here rather than after first paint.
+                positionMs = resumePositionMs(request),
                 durationMs = 0,
             )
             loadMetadata(request)
@@ -537,12 +761,108 @@ class PlayerViewModel(
         )
         prepare(Uri.parse(rendition.url), rendition, start, playWhenReady = true)
         loadMetadata(request)
+        applyDefaultSubtitle(request)
+        hydrateCommunitySubtitles(request)
     }
+
+    /**
+     * A second caption source, so the picker always offers community tracks —
+     * whatever the provider returned.
+     *
+     * It runs even when the provider published captions of its own: those are
+     * different files timed to different releases, and the viewer is the one who
+     * can tell which matches their copy. The only reason to skip is a community
+     * track already in the list.
+     *
+     * It never blocks playback and reports its own outcome, so the picker can
+     * say "none available" and offer a retry instead of silently showing a short
+     * list.
+     */
+    private fun hydrateCommunitySubtitles(request: PlaybackRequest) {
+        if (state.subtitles.any { it.provider == SubtitleProvider.COMMUNITY }) {
+            state = state.copy(subtitleAvailability = SubtitleAvailability.AVAILABLE)
+            return
+        }
+        viewModelScope.launch {
+            state = state.copy(subtitleAvailability = SubtitleAvailability.LOADING)
+            val subject = state.subject
+            val lookup = FreeSubtitleRequest(
+                title = subject?.title ?: request.title,
+                year = subject?.year,
+                isSeries = request.isSeries || request.season != null,
+                season = request.season,
+                episode = request.episode,
+                language = container.settings.value.preferredLanguage.takeIf { it.isNotBlank() },
+            )
+            val tracks = try {
+                freeSubtitles.tracks(lookup)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                emptyList()
+            }
+            // The item, the episode and the viewer's own choice can all have
+            // moved on while the search was in flight.
+            if (state.request != request || state.webUrl != null) return@launch
+            if (tracks.isEmpty()) {
+                state = state.copy(subtitleAvailability = SubtitleAvailability.UNAVAILABLE)
+                return@launch
+            }
+            // Merged, not replaced: a track the viewer already picked, or one
+            // picked while this ran, keeps its place at the top of the list.
+            state = state.copy(
+                subtitles = SubtitleTracks.merging(state.subtitles, tracks),
+                subtitleAvailability = SubtitleAvailability.AVAILABLE,
+            )
+            if (!subtitleChosen) applyDefaultSubtitle(request)
+        }
+    }
+
+    /**
+     * Starts on a sensible track instead of "off": English first, and on a
+     * numbered episode the community file, which is keyed to that episode
+     * rather than to the title's first upload.
+     */
+    private fun applyDefaultSubtitle(request: PlaybackRequest) {
+        if (subtitleChosen || state.webUrl != null) return
+        val track = SubtitleTracks.defaultTrack(
+            tracks = state.subtitles,
+            isOriginalAudio = isOriginalAudio(),
+            chosen = null,
+            prefersCommunity = request.episode != null,
+        ) ?: return
+        if (state.selectedSubtitle?.url == track.url) return
+        applySubtitle(track)
+    }
+
+    /** The current subject speaks the viewer's own language, so captions are optional. */
+    private fun isOriginalAudio(): Boolean {
+        val dubs = state.dubs
+        if (dubs.isEmpty()) return true
+        return dubs.firstOrNull { it.subjectId == state.request.subjectId }?.isOriginal ?: true
+    }
+
+    /**
+     * The finished download for exactly this episode, if there is one.
+     *
+     * The queue holds at most one entry per episode and quality, so the first
+     * completed match is the only sensible pick. Only direct files qualify: a
+     * saved manifest is not something the native player can open from disk.
+     */
+    private fun downloadedCopy(request: PlaybackRequest): DownloadItem? =
+        container.downloads.items.value.firstOrNull { item ->
+            item.status == DownloadStatus.COMPLETED &&
+                item.container.isDirectDownload &&
+                item.subjectId == request.subjectId &&
+                item.season == request.season &&
+                item.episode == request.episode &&
+                container.downloads.fileFor(item).let { it.exists() && it.length() > 0 }
+        }
 
     private fun playLocal(
         uri: Uri,
         request: PlaybackRequest,
-        download: com.cinemacore.app.domain.DownloadItem? = null,
+        download: DownloadItem? = null,
     ) {
         val start = resumePositionMs(request)
         val localSubtitles = download?.subtitles.orEmpty().map { subtitle ->
@@ -707,6 +1027,7 @@ class PlayerViewModel(
     }
 
     private fun fail(error: CinemacoreError) {
+        record(Feature.PLAYBACK, FeatureEvent.Kind.FAILED)
         state = state.copy(
             loadState = LoadState.Failed(error),
             isBuffering = false,
@@ -714,23 +1035,39 @@ class PlayerViewModel(
         )
     }
 
+    /**
+     * Fire-and-forget by design: recording must never delay a frame or turn a
+     * playback error into a second one.
+     */
+    private fun record(feature: Feature, kind: FeatureEvent.Kind, detail: String? = null) {
+        viewModelScope.launch {
+            runCatching { container.features.record(feature, kind, detail) }
+        }
+    }
+
     override fun onCleared() {
         player.removeListener(listener)
         loadJob?.cancel()
         progressJob?.cancel()
         settingsJob?.cancel()
+        skipJob?.cancel()
+        unlockJob?.cancel()
         super.onCleared()
     }
 
     companion object {
         const val MIN_SPEED = 0.25f
         const val MAX_SPEED = 4f
+        const val SKIP_STEP_MS = 10_000L
         val SPEED_OPTIONS = listOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 2f)
 
         private const val PROGRESS_POLL_MS = 500L
         private const val RECORD_INTERVAL_MS = 10_000L
         private const val RESUME_MIN_POSITION_MS = 5_000L
+        private const val WEB_RECORD_INTERVAL_MS = 5_000L
         private const val RESUME_END_GUARD_MS = 10_000L
+        private const val SKIP_PILL_MS = 700L
+        private const val UNLOCK_HINT_MS = 3_000L
 
         fun formatTime(milliseconds: Long): String {
             val totalSeconds = (milliseconds / 1000).coerceAtLeast(0)

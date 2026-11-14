@@ -13,6 +13,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PictureInPictureAlt
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -22,6 +23,7 @@ import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -35,6 +37,8 @@ import com.cinemacore.app.domain.Dub
 import com.cinemacore.app.domain.Episode
 import com.cinemacore.app.domain.PlaybackPolicy
 import com.cinemacore.app.domain.StreamRendition
+import com.cinemacore.app.domain.SubtitleAvailability
+import com.cinemacore.app.domain.SubtitleProvider
 import com.cinemacore.app.domain.SubtitleTrack
 import com.cinemacore.app.ui.theme.CinemaColors
 import com.cinemacore.app.ui.theme.CinemaShape
@@ -48,6 +52,7 @@ internal fun PlayerOptionsSheet(
     onSpeed: (Float) -> Unit,
     onQuality: (StreamRendition) -> Unit,
     onSubtitle: (SubtitleTrack?) -> Unit,
+    onRetryCommunitySubtitles: () -> Unit,
     onAudio: (Dub) -> Unit,
     onEpisode: (Episode) -> Unit,
     onAutoPlayNext: (Boolean) -> Unit,
@@ -149,7 +154,9 @@ internal fun PlayerOptionsSheet(
                     color = CinemaColors.Separator,
                 )
                 SheetSectionTitle(stringResource(R.string.player_subtitles))
-                if (state.subtitles.isEmpty()) {
+                val providerTracks = state.subtitles.filter { it.provider == SubtitleProvider.PROVIDER }
+                val communityTracks = state.subtitles.filter { it.provider == SubtitleProvider.COMMUNITY }
+                if (state.subtitles.isEmpty() && state.subtitleAvailability != SubtitleAvailability.LOADING) {
                     Text(
                         text = stringResource(R.string.player_subtitles_empty),
                         style = MaterialTheme.typography.bodyMedium,
@@ -165,17 +172,61 @@ internal fun PlayerOptionsSheet(
                             onDismiss()
                         },
                     )
-                    state.subtitles.forEach { track ->
-                        OptionRow(
-                            selected = state.selectedSubtitle?.url == track.url,
-                            title = track.language,
-                            subtitle = track.format?.uppercase(),
-                            onClick = {
-                                onSubtitle(track)
-                                onDismiss()
-                            },
+                    providerTracks.forEach { track ->
+                        SubtitleRow(track = track, state = state, onSubtitle = onSubtitle, onDismiss = onDismiss)
+                    }
+                }
+
+                // The lookup reports its own outcome: an empty section is
+                // indistinguishable from a source that does not exist, which is
+                // what made "community subtitles are missing" look like a
+                // missing feature rather than a failed request.
+                when (state.subtitleAvailability) {
+                    SubtitleAvailability.LOADING -> Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(CinemaSpacing.x2),
+                    ) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(16.dp),
+                            strokeWidth = 2.dp,
+                            color = CinemaColors.TextSecondary,
+                        )
+                        Text(
+                            text = stringResource(R.string.player_subtitles_searching),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = CinemaColors.TextSecondary,
                         )
                     }
+
+                    SubtitleAvailability.UNAVAILABLE -> Column {
+                        Text(
+                            text = stringResource(R.string.player_subtitles_community_none),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = CinemaColors.TextSecondary,
+                        )
+                        TextButton(onClick = onRetryCommunitySubtitles) {
+                            Text(stringResource(R.string.player_subtitles_retry))
+                        }
+                    }
+
+                    SubtitleAvailability.AVAILABLE -> if (communityTracks.isNotEmpty()) {
+                        SheetSectionTitle(stringResource(R.string.player_subtitles_community))
+                        Text(
+                            text = stringResource(R.string.player_subtitles_community_hint),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = CinemaColors.TextSecondary,
+                        )
+                        communityTracks.forEach { track ->
+                            SubtitleRow(
+                                track = track,
+                                state = state,
+                                onSubtitle = onSubtitle,
+                                onDismiss = onDismiss,
+                            )
+                        }
+                    }
+
+                    SubtitleAvailability.IDLE -> Unit
                 }
 
                 HorizontalDivider(
@@ -373,8 +424,7 @@ internal fun OptionRow(
     title: String,
     subtitle: String?,
     onClick: () -> Unit,
-) {
-    Surface(
+) {    Surface(
         onClick = onClick,
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(CinemaShape.small),
@@ -429,4 +479,26 @@ private fun SettingRow(
         )
         Switch(checked = checked, onCheckedChange = onCheckedChange)
     }
+}
+
+/**
+ * One caption row. The release label is what tells two English files apart;
+ * without it both rows would read "English" and pick the same-looking track.
+ */
+@Composable
+private fun SubtitleRow(
+    track: SubtitleTrack,
+    state: PlayerUiState,
+    onSubtitle: (SubtitleTrack?) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    OptionRow(
+        selected = state.selectedSubtitle?.url == track.url,
+        title = track.language,
+        subtitle = track.source ?: track.format?.uppercase(),
+        onClick = {
+            onSubtitle(track)
+            onDismiss()
+        },
+    )
 }
