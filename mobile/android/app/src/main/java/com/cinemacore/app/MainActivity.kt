@@ -49,7 +49,7 @@ class MainActivity : ComponentActivity() {
                         permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
                     }
                 }
-                SplashOverlay {
+                SplashOverlay(isLoading = !app.bootstrapped) {
                     Surface(
                         modifier = Modifier.fillMaxSize(),
                         color = MaterialTheme.colorScheme.background,

@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.Cinemacore" parent="Theme.Cinemacore.Base">
+        <item name="android:windowSplashScreenBackground">#090A10</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@mipmap/ic_launcher</item>
+        <item name="android:windowSplashScreenIconBackgroundColor">#090A10</item>
+        <item name="android:windowSplashScreenAnimationDuration">0</item>
+    </style>
+
+    <style name="Theme.Cinemacore.Player" parent="Theme.Cinemacore.Base">
+        <item name="android:windowBackground">#000000</item>
+        <item name="android:windowFullscreen">false</item>
+        <item name="android:windowActionModeOverlay">true</item>
+        <item name="android:windowSplashScreenBackground">#000000</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@android:color/transparent</item>
+        <item name="android:windowSplashScreenAnimationDuration">0</item>
+    </style>
+</resources>

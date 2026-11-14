@@ -26,11 +26,22 @@ class SubtitleCache(
         directory.mkdirs()
     }
 
-    suspend fun cached(track: SubtitleTrack, cookie: String? = null): File? =
-        withContext(Dispatchers.IO) {
-            val stem = safeName("${track.language}-${track.url.hashCode()}")
+    suspend fun cached(
+        track: SubtitleTrack,
+        cookie: String? = null,
+        scope: String? = null,
+    ): File? = withContext(Dispatchers.IO) {
+        // A series' tracks differ per episode, so the scope (S:E) folds into
+        // the cache key: episode 2 never reuses episode 1's cached file.
+        val stem = safeName("${track.language}-${track.url.hashCode()}-${scope.orEmpty()}")
             val cached = File(directory, "$stem.vtt")
-            if (cached.exists() && cached.length() > 0) return@withContext cached
+            if (cached.exists() && cached.length() > 0) {
+                // An expired cookie answers 200 with an HTML login page. A cache
+                // written from that response would poison this track forever, so
+                // only bodies that actually carry a cue are trusted.
+                if (cached.readText().contains("-->")) return@withContext cached
+                cached.delete()
+            }
             val request = Request.Builder()
                 .url(track.url)
                 .apply { cookie?.takeIf { it.isNotBlank() }?.let { header("Cookie", it) } }
@@ -40,6 +51,9 @@ class SubtitleCache(
                 http.newCall(request).execute().use { response ->
                     if (!response.isSuccessful) return@withContext null
                     val body = response.body?.string() ?: return@withContext null
+                    // Same guard at write time: an HTML error page can parse as
+                    // text but carries no cue lines.
+                    if (!body.contains("-->")) return@withContext null
                     val vtt = toVtt(body)
                     val temp = File(directory, "$stem.vtt.tmp")
                     temp.writeText(vtt)
@@ -61,6 +75,7 @@ class SubtitleCache(
         cookie: String? = null,
         idPrefix: String,
         targetDirectory: File = directory,
+        scope: String? = null,
     ): List<DownloadedSubtitle> = withContext(Dispatchers.IO) {
         targetDirectory.mkdirs()
         tracks.mapIndexedNotNull { index, track ->
@@ -68,7 +83,7 @@ class SubtitleCache(
                 targetDirectory,
                 safeName("$idPrefix-${index}-${track.language}") + ".vtt",
             )
-            val fetched = cached(track, cookie) ?: return@mapIndexedNotNull null
+            val fetched = cached(track, cookie, scope) ?: return@mapIndexedNotNull null
             if (target != fetched) {
                 fetched.copyTo(target, overwrite = true)
             }

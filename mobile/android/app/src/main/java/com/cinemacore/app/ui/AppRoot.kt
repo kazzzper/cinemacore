@@ -40,6 +40,7 @@ import com.cinemacore.app.ui.manage.ManageCategoriesScreen
 import com.cinemacore.app.ui.navigation.AppRoute
 import com.cinemacore.app.ui.navigation.AppTab
 import com.cinemacore.app.ui.search.SearchScreen
+import com.cinemacore.app.ui.settings.FeatureTrackingScreen
 import com.cinemacore.app.ui.settings.SettingsScreen
 import com.cinemacore.app.ui.theme.CinemaColors
 
@@ -121,6 +122,7 @@ fun CinemacoreRoot(
                         onOpenManage = { push(AppRoute.ManageCategories) },
                         onOpenDocs = { push(AppRoute.Docs) },
                         onOpenLab = { push(AppRoute.Lab) },
+                        onOpenFeatureTracking = { push(AppRoute.FeatureTracking) },
                     )
                 }
             } else {
@@ -150,6 +152,10 @@ fun CinemacoreRoot(
                     )
                     AppRoute.Docs -> DocsScreen(onBack = ::pop)
                     AppRoute.Lab -> LabScreen(
+                        app = app,
+                        onBack = ::pop,
+                    )
+                    AppRoute.FeatureTracking -> FeatureTrackingScreen(
                         app = app,
                         onBack = ::pop,
                     )

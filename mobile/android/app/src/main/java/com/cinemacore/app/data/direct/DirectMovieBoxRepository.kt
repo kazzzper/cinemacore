@@ -381,16 +381,30 @@ class DirectMovieBoxRepository(
         season: Int?,
         episode: Int?,
     ): List<SubtitleTrack> {
-        val detail = MovieBoxWire.detailSubject(
-            fetch(
-                "GET",
-                "/wefeed-mobile-bff/subject-api/get?subjectId=${encode(subjectId)}",
-                null,
-            ),
-        ) ?: return emptyList()
-        val resourceId = detail.resourceDetectors.firstOrNull()?.resourceId
-            ?.takeIf { it.isNotBlank() }
-            ?: return emptyList()
+        // Captions are keyed by a resourceId, and the title payload's
+        // resourceDetectors name only the title's first upload (S1E1 for a
+        // series), so for episodes resolve the playing episode's own id from
+        // the per-title resource listing first.
+        var resourceId: String? = null
+        if ((episode ?: 0) > 0) {
+            val items = resources(subjectId, season, episode)
+            resourceId = MovieBoxRecovery.resourcesForEpisode(
+                items, season, episode,
+                seasonOf = { it.se }, episodeOf = { it.ep },
+            ).firstOrNull { it.resourceId.isNotBlank() }?.resourceId
+        }
+        if (resourceId.isNullOrBlank()) {
+            val detail = MovieBoxWire.detailSubject(
+                fetch(
+                    "GET",
+                    "/wefeed-mobile-bff/subject-api/get?subjectId=${encode(subjectId)}",
+                    null,
+                ),
+            ) ?: return emptyList()
+            resourceId = detail.resourceDetectors.firstOrNull()?.resourceId
+                ?.takeIf { it.isNotBlank() }
+                ?: return emptyList()
+        }
 
         var path = "/wefeed-mobile-bff/subject-api/get-ext-captions" +
             "?subjectId=${encode(subjectId)}&resourceId=${encode(resourceId)}"

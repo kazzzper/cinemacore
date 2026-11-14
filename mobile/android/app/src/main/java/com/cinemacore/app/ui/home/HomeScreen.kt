@@ -21,15 +21,14 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
@@ -59,6 +58,7 @@ import com.cinemacore.app.ui.theme.CinemaSpacing
 /** Compact hero art: a small screen still shows the first rail below it. */
 private val HeroArtHeight = 280.dp
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
     app: CinemacoreViewModel,
@@ -108,12 +108,11 @@ fun HomeScreen(
         if (!app.isLive) {
             NoticeBanner(text = app.sourceNote.ifBlank { demoSources })
         }
-        HomeHeader(
-            loading = loadedState.isLoading,
-            onRefresh = viewModel::load,
-        )
-        Box(
-            Modifier
+        HomeHeader()
+        PullToRefreshBox(
+            isRefreshing = viewModel.isRefreshing,
+            onRefresh = viewModel::refresh,
+            modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth(),
         ) {
@@ -137,10 +136,7 @@ fun HomeScreen(
 }
 
 @Composable
-private fun HomeHeader(
-    loading: Boolean,
-    onRefresh: () -> Unit,
-) {
+private fun HomeHeader() {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -153,26 +149,6 @@ private fun HomeHeader(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Wordmark(Modifier.weight(1f))
-        if (loading) {
-            CircularProgressIndicator(
-                modifier = Modifier
-                    .padding(horizontal = CinemaSpacing.x3)
-                    .size(22.dp),
-                color = CinemaColors.Brand,
-                strokeWidth = 2.dp,
-            )
-        } else {
-            IconButton(
-                onClick = onRefresh,
-                modifier = Modifier.size(48.dp),
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.Refresh,
-                    contentDescription = stringResource(R.string.home_action_refresh),
-                    tint = CinemaColors.TextPrimary,
-                )
-            }
-        }
     }
 }
 

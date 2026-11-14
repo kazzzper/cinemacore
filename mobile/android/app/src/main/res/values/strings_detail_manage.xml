@@ -9,6 +9,7 @@
     <string name="detail_play">Play</string>
     <string name="detail_play_episode">Play S%1$dE%2$d</string>
     <string name="detail_download">Download</string>
+    <string name="detail_download_episode">Download this episode</string>
     <string name="detail_synopsis">Synopsis</string>
     <string name="detail_cast">Cast</string>
     <string name="detail_episodes">Episodes</string>

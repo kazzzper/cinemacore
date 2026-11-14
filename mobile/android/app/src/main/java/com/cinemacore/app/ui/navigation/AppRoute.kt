@@ -21,6 +21,8 @@ sealed interface AppRoute {
     data object Docs : AppRoute
 
     data object Lab : AppRoute
+
+    data object FeatureTracking : AppRoute
 }
 
 enum class AppTab(@param:StringRes val labelRes: Int) {

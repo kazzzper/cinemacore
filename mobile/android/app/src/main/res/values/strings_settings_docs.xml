@@ -59,6 +59,22 @@
     <string name="settings_about_docs_detail">How the app works, gateway setup and playback notes.</string>
     <string name="settings_about_lab">Lab</string>
     <string name="settings_about_lab_detail">Inspect the active catalog and preview app dialogs.</string>
+    <string name="settings_about_feature_tracking">Feature tracking</string>
+    <string name="settings_about_feature_tracking_detail">Which features exist, what is on, and what has actually been used. Local only.</string>
+    <string name="feature_tracking_title">Feature tracking</string>
+    <string name="feature_tracking_back">Back</string>
+    <string name="feature_tracking_loading">Reading feature usage</string>
+    <string name="feature_tracking_summary_enabled">Enabled</string>
+    <string name="feature_tracking_enabled_value">%1$d of %2$d</string>
+    <string name="feature_tracking_summary_unused">Never used</string>
+    <string name="feature_tracking_footer">Recorded on this device only. Nothing is uploaded, and no titles or identifiers are stored.</string>
+    <string name="feature_tracking_usage">%1$d uses · %2$d failures</string>
+    <string name="feature_tracking_copy">Copy report</string>
+    <string name="feature_tracking_copied">Copied</string>
+    <string name="feature_tracking_reset">Reset</string>
+    <string name="feature_tracking_cancel">Cancel</string>
+    <string name="feature_tracking_reset_title">Reset feature tracking?</string>
+    <string name="feature_tracking_reset_message">Usage counts and every enabled/disabled override are cleared. This cannot be undone.</string>
     <string name="settings_about_version">Version</string>
 
     <!-- Docs -->

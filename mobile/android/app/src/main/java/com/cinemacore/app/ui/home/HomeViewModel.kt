@@ -22,6 +22,10 @@ class HomeViewModel(private val repository: CatalogRepository) : ViewModel() {
     var state: LoadState<Page> by mutableStateOf(LoadState.Idle)
         private set
 
+    /** The pull-to-refresh indicator; the loaded page stays on screen meanwhile. */
+    var isRefreshing: Boolean by mutableStateOf(false)
+        private set
+
     private var loadedOnce = false
 
     /** Tab switches recreate the composition, not the holder; only load once. */
@@ -29,9 +33,18 @@ class HomeViewModel(private val repository: CatalogRepository) : ViewModel() {
         if (!loadedOnce) load()
     }
 
-    fun load() {
-        if (state.isLoading) return
-        state = LoadState.Loading
+    fun load() = fetch(keepContent = false)
+
+    /** A pull keeps the current page visible instead of replacing it with a spinner. */
+    fun refresh() = fetch(keepContent = true)
+
+    private fun fetch(keepContent: Boolean) {
+        if (state.isLoading || isRefreshing) return
+        if (keepContent && state.valueOrNull != null) {
+            isRefreshing = true
+        } else {
+            state = LoadState.Loading
+        }
         viewModelScope.launch {
             try {
                 val page = repository.home()
@@ -42,6 +55,8 @@ class HomeViewModel(private val repository: CatalogRepository) : ViewModel() {
             } catch (failure: Throwable) {
                 val error = failure.asCinemacoreError()
                 state = if (error.requiresGate) LoadState.Locked(error) else LoadState.Failed(error)
+            } finally {
+                isRefreshing = false
             }
         }
     }

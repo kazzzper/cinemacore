@@ -11,6 +11,8 @@ import com.cinemacore.app.AppContainer
 import com.cinemacore.app.data.DemoCatalogRepository
 import com.cinemacore.app.data.DownloadRequest
 import com.cinemacore.app.data.DownloadService
+import com.cinemacore.app.data.Feature
+import com.cinemacore.app.data.FeatureEvent
 import com.cinemacore.app.domain.AppSettings
 import com.cinemacore.app.domain.CatalogRepository
 import com.cinemacore.app.domain.DownloadGrouping
@@ -63,6 +65,7 @@ class CinemacoreViewModel(private val container: AppContainer) : ViewModel() {
 
     val downloadsDirectory = container.downloadsDirectory
     val subtitleCache = container.subtitleCache
+    val features = container.features
     val player get() = container.player
 
     init {
@@ -84,6 +87,9 @@ class CinemacoreViewModel(private val container: AppContainer) : ViewModel() {
                         cookie = item.cookie,
                         idPrefix = item.id,
                         targetDirectory = downloadsDirectory,
+                        scope = if (item.episode != null && item.episode > 0) {
+                            "${item.season ?: 0}:${item.episode}"
+                        } else null,
                     )
                 }
             }.orEmpty()
@@ -233,6 +239,13 @@ class CinemacoreViewModel(private val container: AppContainer) : ViewModel() {
         }
         val results = if (requests.isEmpty()) emptyList() else container.downloads.enqueue(requests)
         val added = results.count { it.added }
+        // The queue outcome is what a viewer expects "downloads" to mean: a
+        // rejected web embed is a failure of the feature, not of the tap.
+        if (added > 0) {
+            container.features.record(Feature.DOWNLOADS, FeatureEvent.Kind.USED)
+        } else if (failed > 0) {
+            container.features.record(Feature.DOWNLOADS, FeatureEvent.Kind.FAILED)
+        }
         if (added > 0) DownloadService.start(container.context)
         val message = when {
             requestedMessage(targets.size, added, failed, reason) != null ->

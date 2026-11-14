@@ -6,7 +6,6 @@
     <string name="home_all_hidden_title">Every rail is hidden</string>
     <string name="home_all_hidden_message">Turn a rail back on in Settings.</string>
     <string name="home_hidden_rails_notice">Some rails are hidden in Settings.</string>
-    <string name="home_action_refresh">Refresh home</string>
     <string name="home_action_play">Play</string>
     <string name="home_action_details">Details</string>
     <string name="home_demo_source">Bundled demo catalogue</string>

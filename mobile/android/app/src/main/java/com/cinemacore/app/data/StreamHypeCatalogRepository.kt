@@ -13,6 +13,8 @@ import java.io.IOException
 import java.net.SocketTimeoutException
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
@@ -162,22 +164,32 @@ class StreamHypeCatalogRepository(
         val url = HttpUrl.Builder()
             .scheme("https")
             .host("api.themoviedb.org")
-            .addPathSegments("3${path.trimStart('/')}")
+            // The version prefix is its own path segment: gluing "3" onto the
+            // route produced /3trending/... and TMDB answers that with an empty
+            // 204 instead of a 404, which surfaced as "catalog unavailable".
+            .addPathSegment("3")
+            .addPathSegments(path.trimStart('/'))
             .addQueryParameter("api_key", key)
             .apply { extra.forEach { (name, value) -> addQueryParameter(name, value) } }
             .build()
         val request = Request.Builder().url(url).header("Accept", "application/json").get().build()
         try {
-            http.newCall(request).execute().use { response ->
-                if (response.code == 404) {
-                    throw CinemacoreError.NotFound
+            // This repository is called from screen-scoped coroutines, i.e. on
+            // the main dispatcher. OkHttp is a blocking client, so the whole
+            // round trip has to leave the UI thread explicitly.
+            val body = withContext(Dispatchers.IO) {
+                http.newCall(request).execute().use { response ->
+                    if (response.code == 404) {
+                        throw CinemacoreError.NotFound
+                    }
+                    if (!response.isSuccessful) {
+                        throw CinemacoreError.Http(response.code)
+                    }
+                    response.body?.string()?.takeIf { it.isNotBlank() }
+                        ?: throw CinemacoreError.Decoding("Empty TMDB body.")
                 }
-                if (!response.isSuccessful) {
-                    throw CinemacoreError.Http(response.code)
-                }
-                val body = response.body?.string() ?: throw CinemacoreError.Decoding("Empty TMDB body.")
-                return json.decodeFromString<T>(body)
             }
+            return json.decodeFromString<T>(body)
         } catch (error: CinemacoreError) {
             throw error
         } catch (error: CancellationException) {
@@ -189,6 +201,7 @@ class StreamHypeCatalogRepository(
         } catch (error: IOException) {
             throw CinemacoreError.Offline
         } catch (error: Exception) {
+            android.util.Log.w("Cinemacore", "StreamHype request failed: $path", error)
             throw CinemacoreError.Unknown(error.message)
         }
     }

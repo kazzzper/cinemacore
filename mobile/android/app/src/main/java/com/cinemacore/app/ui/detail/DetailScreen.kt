@@ -35,6 +35,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
@@ -228,6 +229,21 @@ fun DetailScreen(
                         )
                     }
                 },
+                onDownloadEpisode = { episode ->
+                    if (queueing) return@DetailContent
+                    chooseQuality(
+                        subjectToQueue = detail.subject,
+                        targets = listOf(
+                            DownloadTarget(
+                                season = episode.season,
+                                episode = episode,
+                                episodeTitle = episode.displayTitle,
+                            ),
+                        ),
+                        season = episode.season,
+                        episode = episode,
+                    )
+                },
                 onSelectSeason = model::selectSeason,
                 onRetryEpisodes = { scope.launch { model.load() } },
             )
@@ -359,6 +375,7 @@ private fun DetailContent(
     onPlaySelected: () -> Unit,
     onPlayEpisode: (Episode) -> Unit,
     onDownload: () -> Unit,
+    onDownloadEpisode: (Episode) -> Unit,
     onSelectSeason: (Int) -> Unit,
     onRetryEpisodes: () -> Unit,
 ) {
@@ -558,6 +575,7 @@ private fun DetailContent(
                     selected = episode.id == selectedEpisode?.id,
                     enabled = actionsEnabled,
                     onPlay = { onPlayEpisode(episode) },
+                    onDownload = { onDownloadEpisode(episode) },
                 )
             }
         }
@@ -651,6 +669,7 @@ private fun EpisodeRow(
     selected: Boolean,
     enabled: Boolean,
     onPlay: () -> Unit,
+    onDownload: () -> Unit,
 ) {
     Row(
         modifier = Modifier
@@ -704,6 +723,18 @@ private fun EpisodeRow(
                 imageVector = Icons.Filled.CheckCircle,
                 contentDescription = stringResource(R.string.detail_selected),
                 tint = CinemaColors.Brand,
+                modifier = Modifier.size(20.dp),
+            )
+        }
+        IconButton(
+            onClick = onDownload,
+            enabled = enabled,
+            modifier = Modifier.size(36.dp),
+        ) {
+            Icon(
+                imageVector = Icons.Filled.Download,
+                contentDescription = stringResource(R.string.detail_download_episode),
+                tint = if (enabled) CinemaColors.TextPrimary else CinemaColors.TextSecondary,
                 modifier = Modifier.size(20.dp),
             )
         }

@@ -80,6 +80,7 @@ fun SettingsScreen(
     onOpenManage: () -> Unit,
     onOpenDocs: () -> Unit,
     onOpenLab: () -> Unit,
+    onOpenFeatureTracking: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val scope = rememberCoroutineScope()
@@ -432,6 +433,12 @@ fun SettingsScreen(
                     title = stringResource(R.string.settings_about_lab),
                     detail = stringResource(R.string.settings_about_lab_detail),
                     onClick = onOpenLab,
+                )
+                CardDivider()
+                NavigationRow(
+                    title = stringResource(R.string.settings_about_feature_tracking),
+                    detail = stringResource(R.string.settings_about_feature_tracking_detail),
+                    onClick = onOpenFeatureTracking,
                 )
                 CardDivider()
                 Row(

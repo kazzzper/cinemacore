@@ -153,4 +153,23 @@ data class SubtitleTrack(
     val language: String,
     val url: String,
     val format: String? = null,
-)
+    /**
+     * The release or file the track was matched to, when the source names one.
+     * Two English tracks otherwise draw identically in the picker.
+     */
+    val source: String? = null,
+    val provider: SubtitleProvider = SubtitleProvider.PROVIDER,
+) {
+    /** The URL alone identifies a file; the same release can list twice. */
+    val id: String
+        get() = "$language|$url"
+}
+
+@Serializable
+enum class SubtitleProvider {
+    /** Captions published with the title by the catalogue source. */
+    PROVIDER,
+
+    /** Keyless community captions looked up per episode. */
+    COMMUNITY,
+}

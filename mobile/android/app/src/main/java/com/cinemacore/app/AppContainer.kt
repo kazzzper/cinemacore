@@ -9,6 +9,8 @@ import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import com.cinemacore.app.data.CatalogResolver
 import com.cinemacore.app.data.DemoCatalogRepository
 import com.cinemacore.app.data.DownloadEngine
+import com.cinemacore.app.data.FeatureTracker
+import com.cinemacore.app.data.FreeSubtitles
 import com.cinemacore.app.data.GatewayCatalogRepository
 import com.cinemacore.app.data.LibraryStore
 import com.cinemacore.app.data.SettingsStore
@@ -48,7 +50,9 @@ class AppContainer(context: Context) {
 
     val settings = SettingsStore(files)
     val library = LibraryStore(files)
+    val features = FeatureTracker(files)
     val downloads = DownloadEngine(downloadsDirectory, okHttp)
+    val freeSubtitles = FreeSubtitles(okHttp)
 
     private val resolver = CatalogResolver(
         http = okHttp,
