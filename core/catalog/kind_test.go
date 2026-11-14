@@ -31,7 +31,7 @@ func (webStub) Stream(context.Context, string, int, int) (models.Stream, error) 
 		},
 	}, nil
 }
-func (webStub) Subtitles(context.Context, string, int) ([]models.Subtitle, error) {
+func (webStub) Subtitles(context.Context, string, int, int) ([]models.Subtitle, error) {
 	return nil, nil
 }
 func (webStub) Suggest(context.Context, string) ([]string, error) { return nil, nil }
@@ -52,7 +52,7 @@ func (bareKindStub) Episodes(context.Context, string) ([]models.Episode, error) 
 func (bareKindStub) Stream(context.Context, string, int, int) (models.Stream, error) {
 	return models.Stream{URL: "https://embed.test/embed/movie?tmdb=1399", Kind: models.KindWeb}, nil
 }
-func (bareKindStub) Subtitles(context.Context, string, int) ([]models.Subtitle, error) {
+func (bareKindStub) Subtitles(context.Context, string, int, int) ([]models.Subtitle, error) {
 	return nil, nil
 }
 func (bareKindStub) Suggest(context.Context, string) ([]string, error) { return nil, nil }

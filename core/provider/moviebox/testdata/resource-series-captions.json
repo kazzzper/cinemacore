@@ -1,0 +1,12 @@
+{
+  "code": 0,
+  "message": "ok",
+  "data": {
+    "pager": { "hasMore": false, "page": "1", "perPage": 50, "totalCount": 3 },
+    "list": [
+      { "se": 1, "ep": 1, "resourceId": "rid-s1e1", "resourceLink": "https://bcdn.example/ep1.mp4", "resolution": 360, "size": "100", "duration": 5751 },
+      { "se": 1, "ep": 2, "resourceId": "rid-s1e2", "resourceLink": "https://bcdn.example/ep2.mp4", "resolution": 720, "size": "200", "duration": 5916 },
+      { "se": 3, "ep": 4, "resourceId": "rid-s3e4", "resourceLink": "https://bcdn.example/s3e4.mp4", "resolution": 1080, "size": "900", "duration": 2400 }
+    ]
+  }
+}

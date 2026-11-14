@@ -412,3 +412,66 @@ func TestDecoyURL(t *testing.T) {
 		}
 	}
 }
+
+// TestSubtitles_KeyedByPlayingEpisode pins the headline bug: captions must be
+// requested with the playing episode's own resourceId from the per-title
+// resource listing, not the title detector's first upload (S1E1 for a series).
+func TestSubtitles_KeyedByPlayingEpisode(t *testing.T) {
+	var gotResourceID string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/resource"):
+			_, _ = w.Write([]byte(fixture(t, "resource-series-captions.json")))
+		case strings.HasSuffix(r.URL.Path, "/get-ext-captions"):
+			gotResourceID = r.URL.Query().Get("resourceId")
+			_, _ = w.Write([]byte(fixture(t, "captions-by-resource.json")))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+	p := New(session.New(session.Config{Hosts: []string{srv.URL}}))
+	ctx := context.Background()
+
+	if _, err := p.Subtitles(ctx, "42", 3, 4); err != nil {
+		t.Fatalf("S3E4 Subtitles: %v", err)
+	}
+	if gotResourceID != "rid-s3e4" {
+		t.Fatalf("S3E4 captions requested resourceId=%q, want rid-s3e4", gotResourceID)
+	}
+
+	if _, err := p.Subtitles(ctx, "42", 1, 2); err != nil {
+		t.Fatalf("S1E2 Subtitles: %v", err)
+	}
+	if gotResourceID != "rid-s1e2" {
+		t.Fatalf("S1E2 captions requested resourceId=%q, want rid-s1e2", gotResourceID)
+	}
+}
+
+// TestSubtitles_FallsBackToDetector covers films and listings without the
+// episode: the title detector's first resourceId is still correct there.
+func TestSubtitles_FallsBackToDetector(t *testing.T) {
+	var gotResourceID string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/get"):
+			_, _ = w.Write([]byte(`{"code":0,"data":{"resourceDetectors":[{"resourceId":"rid-film"}]}}`))
+		case strings.HasSuffix(r.URL.Path, "/get-ext-captions"):
+			gotResourceID = r.URL.Query().Get("resourceId")
+			_, _ = w.Write([]byte(fixture(t, "captions-by-resource.json")))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+	p := New(session.New(session.Config{Hosts: []string{srv.URL}}))
+
+	if _, err := p.Subtitles(context.Background(), "42", 0, 0); err != nil {
+		t.Fatalf("film Subtitles: %v", err)
+	}
+	if gotResourceID != "rid-film" {
+		t.Fatalf("film captions requested resourceId=%q, want rid-film", gotResourceID)
+	}
+}

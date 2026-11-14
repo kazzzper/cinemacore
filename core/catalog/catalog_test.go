@@ -25,7 +25,7 @@ func (streamStub) Stream(context.Context, string, int, int) (models.Stream, erro
 		{Label: "720", URL: "https://cdn.example/720.m3u8", Size: "5", Cookie: "signed=720"},
 	}}, nil
 }
-func (streamStub) Subtitles(context.Context, string, int) ([]models.Subtitle, error) {
+func (streamStub) Subtitles(context.Context, string, int, int) ([]models.Subtitle, error) {
 	return nil, nil
 }
 func (streamStub) Suggest(context.Context, string) ([]string, error) { return nil, nil }

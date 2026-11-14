@@ -257,7 +257,7 @@ func (p *Provider) Stream(ctx context.Context, id string, season, episode int) (
 // the web player shows them itself. Exposing TMDB-less empty tracks here is
 // honest (the contract treats captions as best-effort) and keeps PlayInfo
 // from advertising tracks that point nowhere.
-func (p *Provider) Subtitles(ctx context.Context, id string, episode int) ([]models.Subtitle, error) {
+func (p *Provider) Subtitles(ctx context.Context, id string, season, episode int) ([]models.Subtitle, error) {
 	return nil, nil
 }
 

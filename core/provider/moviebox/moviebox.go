@@ -102,14 +102,22 @@ func (p *Provider) Stream(ctx context.Context, id string, season, episode int) (
 	return p.resolveStream(ctx, id, season, episode)
 }
 
-// Subtitles returns external caption tracks for one episode. The gateway keys
-// captions by the title's first playable resourceId, resolved via Detail.
-func (p *Provider) Subtitles(ctx context.Context, id string, episode int) ([]models.Subtitle, error) {
-	detail, err := p.Detail(ctx, id)
-	if err != nil {
-		return nil, err
+// Subtitles returns external caption tracks for one episode. Captions are keyed
+// by a resourceId, and the title payload's resourceDetectors name only the
+// title's first upload — episode 1 of a series — so for episodes we resolve the
+// playing episode's own id from the per-title resource listing first.
+func (p *Provider) Subtitles(ctx context.Context, id string, season, episode int) ([]models.Subtitle, error) {
+	rid := ""
+	if episode > 0 {
+		rid = p.captionResourceID(ctx, id, season, episode)
 	}
-	rid := firstResourceID(detail.ResourceDetectors)
+	if rid == "" {
+		detail, err := p.Detail(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+		rid = firstResourceID(detail.ResourceDetectors)
+	}
 	if rid == "" {
 		return nil, nil
 	}
@@ -127,6 +135,22 @@ func (p *Provider) Subtitles(ctx context.Context, id string, episode int) ([]mod
 		subs = append(subs, models.Subtitle{Lang: c.lang(), URL: c.URL, Format: captionFormat(c.URL)})
 	}
 	return subs, nil
+}
+
+// captionResourceID narrows the per-title resource listing to the playing
+// episode and returns its resourceId. An empty result means "no listing entry",
+// which callers treat as "fall back to the title detector".
+func (p *Provider) captionResourceID(ctx context.Context, id string, season, episode int) string {
+	items, ok := p.resources(ctx, id, season, episode)
+	if !ok {
+		return ""
+	}
+	for _, it := range items {
+		if it.Ep == episode && (season <= 0 || it.Se == season) && it.ResourceID != "" {
+			return it.ResourceID
+		}
+	}
+	return ""
 }
 
 // Suggest returns type-ahead terms for a query from the gateway's suggester.

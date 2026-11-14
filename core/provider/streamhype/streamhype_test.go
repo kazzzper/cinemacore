@@ -357,7 +357,7 @@ func TestSubtitlesAreEmptyAndHonest(t *testing.T) {
 	srv := stubTMDB(&tmdbStub{})
 	defer srv.Close()
 
-	subs, err := newProvider(srv).Subtitles(context.Background(), "tmdb-movie-27205", 0)
+	subs, err := newProvider(srv).Subtitles(context.Background(), "tmdb-movie-27205", 0, 0)
 	if err != nil {
 		t.Fatalf("Subtitles: %v", err)
 	}

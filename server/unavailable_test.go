@@ -28,7 +28,7 @@ func (unavailableProvider) Episodes(context.Context, string) ([]models.Episode, 
 func (unavailableProvider) Stream(context.Context, string, int, int) (models.Stream, error) {
 	return models.Stream{}, &provider.UnavailableError{Provider: "unavailable", Reason: "only a decoy was offered"}
 }
-func (unavailableProvider) Subtitles(context.Context, string, int) ([]models.Subtitle, error) {
+func (unavailableProvider) Subtitles(context.Context, string, int, int) ([]models.Subtitle, error) {
 	return nil, nil
 }
 func (unavailableProvider) Suggest(context.Context, string) ([]string, error) { return nil, nil }

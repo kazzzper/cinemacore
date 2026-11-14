@@ -36,7 +36,7 @@ func (stubProvider) Stream(context.Context, string, int, int) (models.Stream, er
 		Qualities: []models.Quality{{Label: "Auto", URL: "https://cdn.example/auto.m3u8"}},
 	}, nil
 }
-func (stubProvider) Subtitles(context.Context, string, int) ([]models.Subtitle, error) {
+func (stubProvider) Subtitles(context.Context, string, int, int) ([]models.Subtitle, error) {
 	return []models.Subtitle{
 		{Lang: "English", URL: "https://cdn.example/en.vtt", Format: "vtt"},
 	}, nil

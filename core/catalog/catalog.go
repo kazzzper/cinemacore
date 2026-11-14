@@ -97,8 +97,8 @@ func (c *Catalog) Stream(ctx context.Context, id string, season, episode int) (m
 }
 
 // Subtitles returns the first provider that resolves id for one episode.
-func (c *Catalog) Subtitles(ctx context.Context, id string, episode int) ([]models.Subtitle, error) {
-	return c.first(func(p provider.Provider) ([]models.Subtitle, error) { return p.Subtitles(ctx, id, episode) })
+func (c *Catalog) Subtitles(ctx context.Context, id string, season, episode int) ([]models.Subtitle, error) {
+	return c.first(func(p provider.Provider) ([]models.Subtitle, error) { return p.Subtitles(ctx, id, season, episode) })
 }
 
 // Play composes a subject's stream renditions and subtitle tracks. Streams are
@@ -109,7 +109,7 @@ func (c *Catalog) Play(ctx context.Context, id string, season, episode int) (mod
 		return models.PlayInfo{}, err
 	}
 	info := models.PlayInfo{Streams: renditions(stream), Subtitles: []models.SubtitleTrack{}}
-	if subs, err := c.Subtitles(ctx, id, episode); err == nil {
+	if subs, err := c.Subtitles(ctx, id, season, episode); err == nil {
 		for _, s := range subs {
 			info.Subtitles = append(info.Subtitles, models.SubtitleTrack{
 				Language: s.Lang, URL: s.URL, Format: s.Format,

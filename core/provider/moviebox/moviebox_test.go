@@ -272,7 +272,7 @@ func TestSubtitlesFromExtCaptions(t *testing.T) {
 	srv := stubGateway(&gatewayStub{})
 	defer srv.Close()
 
-	subs, err := newProvider(t, srv).Subtitles(context.Background(), "42", 1)
+	subs, err := newProvider(t, srv).Subtitles(context.Background(), "42", 0, 0)
 	if err != nil {
 		t.Fatalf("Subtitles: %v", err)
 	}
