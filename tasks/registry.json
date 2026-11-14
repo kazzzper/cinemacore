@@ -406,7 +406,7 @@
       "owner": "opencode",
       "deps": [],
       "acceptance": "splash waits for bootstrap and uses the iOS mark; StreamHype embeds play in the hardened WebView; edge drags set brightness/volume with a HUD; player locks and unlocks; assembleDebug, tests and lint green",
-      "updatedAt": "2026-10-31T08:16:17.170Z",
+      "updatedAt": "2026-11-14T06:44:37.903Z",
       "links": []
     },
     {
@@ -418,6 +418,39 @@
       "deps": [],
       "acceptance": "A web-embed rendition renders a visible, labelled back button that dismisses the player; the native chrome is unchanged; xtool build green",
       "updatedAt": "2026-11-14T06:41:44.169Z",
+      "links": []
+    },
+    {
+      "id": "T-032",
+      "title": "Android parity: progressive playback of an in-progress download",
+      "status": "todo",
+      "module": "android",
+      "owner": null,
+      "deps": [],
+      "acceptance": "A downloading item can be opened and plays from its growing .part file; a finished queue item and the CDN fallback still work",
+      "updatedAt": "2026-11-14T07:02:24.590Z",
+      "links": []
+    },
+    {
+      "id": "T-033",
+      "title": "iOS: download quality picker, progressive readiness, hev1 repair on failure, StreamHype resume",
+      "status": "review",
+      "module": "mobile/ios",
+      "owner": "dsh-bugfix",
+      "deps": [],
+      "acceptance": "A download resolves its ladder and shows qualities before queueing; an in-progress download is playable while totalBytes is still unknown; an hev1 item that fails to open is repaired before the failure is shown; a web embed seeks to its stored position and reports its clock; swift test + xtool build green",
+      "updatedAt": "2026-11-14T07:02:24.528Z",
+      "links": []
+    },
+    {
+      "id": "T-034",
+      "title": "Android parity: StreamHype web resume position",
+      "status": "todo",
+      "module": "mobile/android",
+      "owner": null,
+      "deps": [],
+      "acceptance": "The web player reports the embed's clock and reopens at the stored position, matching iOS; assembleDebug green",
+      "updatedAt": "2026-11-14T07:02:18.358Z",
       "links": []
     }
   ]

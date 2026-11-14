@@ -10,6 +10,11 @@ struct DetailScreen: View {
     @State private var isInWatchlist = false
     @State private var showsEpisodePicker = false
     @State private var downloadNotice: String?
+    /// Targets waiting for the quality picker, and the rungs it resolved.
+    @State private var qualityTargets: [DownloadTarget]?
+    @State private var qualityChoices: [StreamRendition] = []
+    /// A resolve is in flight; the sheet appears when it lands.
+    @State private var isResolvingQuality = false
     /// The source generation this screen's view model was built against.
     ///
     /// A detail page opened from a search result or a rail outlives a provider
@@ -115,6 +120,23 @@ struct DetailScreen: View {
             Task { await model.load() }
         }
         .sheet(isPresented: $showsEpisodePicker) { episodePicker }
+        .sheet(
+            isPresented: Binding(
+                get: { qualityTargets != nil },
+                set: { if !$0 { qualityTargets = nil } }
+            )
+        ) {
+            DownloadQualitySheet(
+                choices: qualityChoices,
+                onSelect: { choice in
+                    guard let targets = qualityTargets else { return }
+                    let picked = targets.map { $0.at(choice.quality) }
+                    qualityTargets = nil
+                    Task { await queue(picked) }
+                },
+                onCancel: { qualityTargets = nil }
+            )
+        }
         .alert("Download", isPresented: noticeIsPresented) {
             Button("OK", role: .cancel) {}
         } message: {
@@ -129,7 +151,7 @@ struct DetailScreen: View {
 
     private func startDownload() {
         guard subject.isSeries else {
-            Task { await queue([DownloadTarget()]) }
+            resolveQuality([DownloadTarget()], season: nil, episode: nil)
             return
         }
         guard !model.episodes.isEmpty else {
@@ -149,16 +171,50 @@ struct DetailScreen: View {
             label: { "\($0.number). \($0.displayTitle)" },
             isSelected: { _ in false },
             onSelect: { episode in
-                Task { await queue([DownloadTarget(season: episode.season, episode: episode)]) }
+                showsEpisodePicker = false
+                resolveQuality(
+                    [DownloadTarget(season: episode.season, episode: episode)],
+                    season: episode.season,
+                    episode: episode
+                )
             },
             detail: { $0.durationText },
             noneLabel: "Download Season \(model.selectedSeason) · \(model.episodes.count) episodes",
             onSelectNone: {
-                Task {
-                    await queue(model.episodes.map { DownloadTarget(season: $0.season, episode: $0) })
-                }
+                showsEpisodePicker = false
+                let targets = model.episodes.map { DownloadTarget(season: $0.season, episode: $0) }
+                guard let first = targets.first else { return }
+                resolveQuality(targets, season: first.season, episode: first.episode)
             }
         )
+    }
+
+    /// Asks the source what this target may be kept at, then shows the picker.
+    ///
+    /// Resolving before the sheet means an episode with nothing downloadable
+    /// says so instead of offering an empty list; a whole season is resolved
+    /// from its first episode, and every target is re-matched at dequeue time.
+    private func resolveQuality(_ targets: [DownloadTarget], season: Int?, episode: Episode?) {
+        guard !targets.isEmpty else {
+            downloadNotice = "This series has no episodes to download yet."
+            return
+        }
+        guard !isResolvingQuality else { return }
+        isResolvingQuality = true
+        Task {
+            let choices = await app.downloadCandidates(
+                subjectID: downloadSubject.id,
+                season: season,
+                episode: episode?.number
+            )
+            isResolvingQuality = false
+            guard !choices.isEmpty else {
+                downloadNotice = "The provider offered no downloadable quality for that episode."
+                return
+            }
+            qualityChoices = choices
+            qualityTargets = targets
+        }
     }
 
     private func queue(_ targets: [DownloadTarget]) async {
@@ -382,7 +438,11 @@ struct DetailScreen: View {
         case nil: "arrow.down.circle"
         }
         return Button {
-            Task { await queue([DownloadTarget(season: episode.season, episode: episode)]) }
+            resolveQuality(
+                [DownloadTarget(season: episode.season, episode: episode)],
+                season: episode.season,
+                episode: episode
+            )
         } label: {
             Image(systemName: symbol)
                 .font(.system(size: 20))
@@ -398,5 +458,80 @@ struct DetailScreen: View {
                 : "Download episode \(episode.number)"
         )
         .accessibilityHint("Queues this episode for offline playback")
+    }
+}
+
+/// The qualities one download may be kept at.
+///
+/// Shown before anything is queued, because the choice is a storage decision:
+/// a 1080p season is gigabytes and the provider's ladder is the only place the
+/// viewer can see that. Only rungs the engine can actually keep are resolved by
+/// the caller, so every row here is a download that will run.
+private struct DownloadQualitySheet: View {
+    let choices: [StreamRendition]
+    let onSelect: (StreamRendition) -> Void
+    let onCancel: () -> Void
+
+    @Environment(\.theme) private var theme
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: Layout.spacing2) {
+                    Text("The download keeps this quality. Playback can still pick another source later.")
+                        .font(Typography.metadata)
+                        .foregroundStyle(theme.textSecondary.color)
+                        .padding(.bottom, Layout.spacing2)
+
+                    ForEach(choices) { choice in
+                        Button { onSelect(choice) } label: {
+                            HStack(spacing: Layout.spacing2) {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(qualityLabel(choice))
+                                        .font(Typography.body.weight(.medium))
+                                        .foregroundStyle(theme.textPrimary.color)
+                                    Text(detail(choice))
+                                        .font(Typography.metadata)
+                                        .foregroundStyle(theme.textSecondary.color)
+                                }
+                                Spacer(minLength: 0)
+                                Image(systemName: "arrow.down.circle")
+                                    .font(.system(size: 18))
+                                    .foregroundStyle(theme.brand.color)
+                            }
+                            .padding(Layout.spacing3)
+                            .frame(maxWidth: .infinity, minHeight: Layout.minimumTarget, alignment: .leading)
+                            .background(theme.surfaceElevated.color, in: RoundedRectangle(cornerRadius: 14))
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Download \(qualityLabel(choice))")
+                        .accessibilityHint(detail(choice))
+                    }
+                }
+                .padding(Layout.spacing4)
+            }
+            .background(theme.background.color)
+            .navigationTitle("Download quality")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel", action: onCancel)
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+        .presentationBackground(.regularMaterial)
+    }
+
+    private func qualityLabel(_ choice: StreamRendition) -> String {
+        choice.quality.isEmpty ? "Auto" : choice.quality
+    }
+
+    /// Container and size are what make two 1080p rows distinguishable: the same
+    /// label can be an MP4 and an HLS rung, and only the former is downloadable.
+    private func detail(_ choice: StreamRendition) -> String {
+        var parts = [choice.container.displayName]
+        if let size = choice.size, !size.isEmpty { parts.append(size) }
+        return parts.joined(separator: " · ")
     }
 }

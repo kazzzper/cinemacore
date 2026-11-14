@@ -391,7 +391,34 @@ final class AppModel {
     func resumeAll() async { await downloadsEngine.resumeAll() }
     func removeCompleted() async { await downloadsEngine.removeCompleted() }
 
-    /// Resolves each target's `PlayInfo` and queues its preferred rendition.
+    /// The qualities a download may be queued at, best-first.
+    ///
+    /// Only rungs this build can actually keep are offered: a web embed is a
+    /// player page, and a manifest has no downloader here, so listing either
+    /// would be a choice that fails after the tap. Resolved from the episode the
+    /// picker was opened on; the queue re-resolves every target so one episode's
+    /// ladder is never assumed to match another's.
+    func downloadCandidates(
+        subjectID: String,
+        season: Int?,
+        episode: Int?
+    ) async -> [StreamRendition] {
+        guard let info = try? await repository.playInfo(
+            subjectID: subjectID,
+            season: season,
+            episode: episode
+        ) else { return [] }
+        return PlaybackSourcePolicy.videoCandidates(info.streams).filter {
+            !$0.isWebEmbed && $0.urlValue != nil && $0.container.isDirectDownload
+        }
+    }
+
+    /// Resolves each target's `PlayInfo` and queues the rendition the viewer
+    /// picked, or the preferred one when they did not pick.
+    ///
+    /// A label that the provider no longer offers falls back to the preferred
+    /// rendition rather than dropping the episode: a season queued at 1080p
+    /// should still download the episode whose ladder tops out at 720p.
     ///
     /// Failures are counted rather than thrown: eleven of twelve episodes
     /// queued is worth keeping, and the outcome reports the twelfth.
@@ -412,7 +439,11 @@ final class AppModel {
                 // audio-only file completes normally and then plays over a black
                 // surface — a download that cannot be played, presented as one
                 // that can.
-                guard let stream = PlaybackSourcePolicy.videoCandidates(info.streams).first,
+                let candidates = PlaybackSourcePolicy.videoCandidates(info.streams)
+                let chosen = target.quality.flatMap { label in
+                    candidates.first { $0.quality == label }
+                }
+                guard let stream = chosen ?? candidates.first,
                       let url = stream.urlValue else {
                     failed += 1
                     reason = reason ?? "The provider returned no playable video stream for that episode."
@@ -571,11 +602,20 @@ final class AppModel {
 struct DownloadTarget: Hashable, Sendable {
     let season: Int?
     let episode: Episode?
+    /// The quality label the viewer picked, applied by `enqueueDownload` when
+    /// that episode's ladder still carries it.
+    let quality: String?
 
     /// A movie is the target with neither season nor episode.
-    init(season: Int? = nil, episode: Episode? = nil) {
+    init(season: Int? = nil, episode: Episode? = nil, quality: String? = nil) {
         self.season = season
         self.episode = episode
+        self.quality = quality
+    }
+
+    /// The same target at a quality the picker resolved.
+    func at(_ quality: String) -> DownloadTarget {
+        DownloadTarget(season: season, episode: episode, quality: quality)
     }
 }
 

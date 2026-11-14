@@ -92,7 +92,14 @@ public actor ProgressiveAssetStore {
         if manager.fileExists(atPath: asset.completeURL.path) {
             return max(asset.totalBytes, fileSize(asset.completeURL))
         }
-        return min(max(fileSize(asset.partialURL), 0), max(asset.totalBytes, 0))
+        let written = max(fileSize(asset.partialURL), 0)
+        // The total is only known once the engine's probe has answered, and the
+        // queue emits before that. Clamping to an unknown total made the
+        // committed prefix read as zero, so an in-progress file was never
+        // "ready" and the Downloads row never offered to play it. What exists on
+        // disk is the prefix either way; the total only bounds it.
+        guard asset.totalBytes > 0 else { return written }
+        return min(written, asset.totalBytes)
     }
 
     public func isReady(_ id: String) -> Bool {

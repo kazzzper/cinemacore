@@ -425,3 +425,26 @@ private func append(_ string: String, to url: URL) throws {
         #expect(!unknown)
     }
 }
+
+@Test func isReadyWithUnknownTotalUsesTheCommittedPrefix() async throws {
+    try await withTemporaryDirectory { directory in
+        let part = directory.appendingPathComponent("unknown-total.part")
+        try write("01234567", to: part)
+        let store = ProgressiveAssetStore()
+        // The queue emits before the engine has learned the content length, so
+        // `totalBytes` is still zero while bytes are already on disk. Clamping
+        // the prefix to that unknown total made it read as empty, which is what
+        // removed the Downloads row's play-while-downloading button.
+        await store.register(ProgressiveAsset(
+            id: "unknown-total",
+            partialURL: part,
+            completeURL: directory.appendingPathComponent("unknown-total.mp4"),
+            totalBytes: 0,
+            readyThreshold: 4
+        ))
+
+        let asset = try #require(await store.asset("unknown-total"))
+        #expect(await store.availableBytes(for: asset) == 8)
+        #expect(await store.isReady("unknown-total"))
+    }
+}

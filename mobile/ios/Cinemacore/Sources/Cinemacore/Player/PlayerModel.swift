@@ -134,6 +134,11 @@ final class PlayerModel {
     /// playing — a download that "won't play" is really playing invisibly
     /// behind a web view.
     private(set) var webStreamURL: URL?
+    /// Where the embed should pick up, once the library has answered.
+    ///
+    /// A web embed owns its own clock, so unlike a native item there is no
+    /// player position to seek: the page is told to seek itself.
+    private(set) var webResumeSeconds: Double?
 
     /// The episode (or movie) playing right now; an episode switch replaces it.
     private(set) var request: PlaybackRequest
@@ -173,6 +178,8 @@ final class PlayerModel {
     private var skipTask: Task<Void, Never>?
     private var unlockTask: Task<Void, Never>?
     private var recordedAt: Date?
+    /// The web equivalent of `recordedAt`: the embed reports on its own cadence.
+    private var webRecordedAt: Date?
     private var stopped = false
     /// Set once the user picks a caption track, so late-arriving provider
     /// metadata cannot overwrite that choice.
@@ -416,6 +423,7 @@ final class PlayerModel {
         // A web playback disappears with the screen, so the web view is torn
         // down here rather than continuing to load behind the library.
         webStreamURL = nil
+        webResumeSeconds = nil
         // Leaving fullscreen by leaving the screen still has to give the device
         // its orientation back.
         if isFullscreen {
@@ -575,6 +583,11 @@ final class PlayerModel {
                     enterTerminalState(.failed(.upstream("The embed URL is not usable.")))
                     return
                 }
+                // Resolved before the embed is handed to the screen, and set
+                // before the URL: the script is built once, in `makeUIView`, so
+                // a position that arrived after the view existed could never be
+                // injected — the embed would start at zero and stay there.
+                webResumeSeconds = await resume(restartAt)
                 webStreamURL = url
                 return
             }
@@ -903,6 +916,7 @@ final class PlayerModel {
         // a previous playback's embed page is retired. The screen's `if let`
         // would otherwise keep the web view up and the new item invisible.
         webStreamURL = nil
+        webResumeSeconds = nil
         // A new source supersedes the old verdict: whatever failed before is not
         // what is playing now, so it cannot explain a future network failure.
         localRejection = nil
@@ -1057,6 +1071,21 @@ final class PlayerModel {
                 Task { [weak self] in await self?.fallbackFromProgressive() }
                 return
             }
+            // A source the platform refused to *open* deserves the same repair
+            // as one that opened and drew nothing: `hev1` has no CoreMedia
+            // codec type, so `AVPlayer` can fail at open rather than at paint,
+            // and the four-byte rename is the whole difference between a dead
+            // end and the title. Only the bytes themselves qualify — a failed
+            // fetch would just re-fetch the same URL to fail again.
+            if !Self.isNetworkFailure(item.error) {
+                Task { [weak self] in
+                    guard let self else { return }
+                    if await self.repairHEVCSource() { return }
+                    if await self.repairLocalHEVCSource() { return }
+                    self.enterTerminalState(.failed(.upstream(self.presentableFailure(item.error))))
+                }
+                return
+            }
             // The Android original left the spinner turning forever here.
             enterTerminalState(.failed(.upstream(presentableFailure(item.error))))
         case .unknown:
@@ -1064,6 +1093,23 @@ final class PlayerModel {
         @unknown default:
             isBuffering = true
         }
+    }
+
+    /// Whether an item error is the network rather than the bytes.
+    ///
+    /// The `hev1` repair re-fetches the source's `moov`, so a title that failed
+    /// because it could not be fetched would pay a second failing request before
+    /// saying what already happened. Only failures inside the media stack are
+    /// worth a repair attempt.
+    private nonisolated static func isNetworkFailure(_ error: (any Error)?) -> Bool {
+        var current = error.map { $0 as NSError }
+        var hops = 0
+        while let nsError = current, hops < 8 {
+            if nsError.domain == NSURLErrorDomain { return true }
+            current = nsError.userInfo[NSUnderlyingErrorKey] as? NSError
+            hops += 1
+        }
+        return false
     }
 
     /// A download that will not play is worth naming: the user can re-queue or
@@ -2044,6 +2090,25 @@ final class PlayerModel {
             durationSeconds: duration
         )
         Task { await app.record(point) }
+    }
+
+    /// A position reported by the embed page's own clock.
+    ///
+    /// The web player has no `AVPlayer`, so this is the only place a StreamHype
+    /// title can store where it was left. It writes the same resume point the
+    /// native path writes — a web title and a downloaded one must land on the
+    /// same History row.
+    func webEmbedProgress(position seconds: Double, duration total: Double) {
+        guard !stopped, webStreamURL != nil,
+              seconds.isFinite, total.isFinite, total > 0, seconds > 0
+        else { return }
+        position = seconds
+        duration = total
+        publishNowPlaying()
+        let now = Date()
+        if let webRecordedAt, now.timeIntervalSince(webRecordedAt) < 5 { return }
+        webRecordedAt = now
+        record()
     }
 
     // MARK: - Now playing

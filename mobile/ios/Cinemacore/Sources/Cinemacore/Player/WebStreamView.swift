@@ -1,3 +1,4 @@
+import Foundation
 import SwiftUI
 import WebKit
 
@@ -28,6 +29,18 @@ import WebKit
 /// promise a position the embed player never reports back.
 struct WebStreamView: UIViewRepresentable {
     let url: URL
+    /// Seconds the embed should seek to once its media is ready.
+    ///
+    /// The embed owns the clock, so a position is the one thing the app can
+    /// only get from the page itself: the injected script reports it, and this
+    /// is handed back on the next open.
+    var startAt: Double?
+    /// Called with the embed's own position and duration.
+    var onProgress: (Double, Double) -> Void
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(onProgress: onProgress)
+    }
 
     func makeUIView(context: Context) -> WKWebView {
         let configuration = WKWebViewConfiguration()
@@ -39,9 +52,12 @@ struct WebStreamView: UIViewRepresentable {
         configuration.websiteDataStore = .nonPersistent()
 
         let controller = WKUserContentController()
-        for script in Self.userScript {
+        for script in Self.userScripts(startAt: startAt) {
             controller.addUserScript(script)
         }
+        // Without a handler the page's progress reports would be dropped
+        // silently, and a web title would keep starting at zero.
+        controller.add(context.coordinator, name: Self.progressHandler)
         configuration.userContentController = controller
 
         let webView = WKWebView(frame: .zero, configuration: configuration)
@@ -63,8 +79,32 @@ struct WebStreamView: UIViewRepresentable {
 
     /// `updateUIView` is intentionally router-blind: the embed player owns
     /// navigation once the first load has begun, and re-issuing the request on
-    /// every SwiftUI update would restart the player mid-film.
-    func updateUIView(_ webView: WKWebView, context: Context) {}
+    /// every SwiftUI update would restart the player mid-film. The callback is
+    /// refreshed because SwiftUI rebuilds this struct on every model change.
+    func updateUIView(_ webView: WKWebView, context: Context) {
+        context.coordinator.onProgress = onProgress
+    }
+
+    /// Receives the script's position reports for the screen to persist.
+    final class Coordinator: NSObject, WKScriptMessageHandler {
+        var onProgress: (Double, Double) -> Void
+
+        init(onProgress: @escaping (Double, Double) -> Void) {
+            self.onProgress = onProgress
+        }
+
+        func userContentController(
+            _ controller: WKUserContentController,
+            didReceive message: WKScriptMessage
+        ) {
+            guard message.name == WebStreamView.progressHandler,
+                  let body = message.body as? [String: Any],
+                  let position = body["p"] as? Double,
+                  let duration = body["d"] as? Double
+            else { return }
+            onProgress(position, duration)
+        }
+    }
 
     // MARK: - Load
 
@@ -94,16 +134,67 @@ struct WebStreamView: UIViewRepresentable {
     /// sandbox-cage frames from distinguishing themselves from the top frame.
     /// Applied at document start on every frame, because the players run
     /// inside other frames.
-    static var userScript: [WKUserScript] {
+    static let progressHandler = "cinemacoreProgress"
+
+    static func userScripts(startAt: Double?) -> [WKUserScript] {
         let source = """
         window.open = function() { return null; };
         try { Object.defineProperty(window, 'top', { get: function() { return window; } }); } catch (e) {}
         """
-        return [WKUserScript(
-            source: source,
-            injectionTime: .atDocumentStart,
-            forMainFrameOnly: false
-        )]
+        return [
+            WKUserScript(
+                source: source,
+                injectionTime: .atDocumentStart,
+                forMainFrameOnly: false
+            ),
+            WKUserScript(
+                source: progressScript(startAt: startAt),
+                injectionTime: .atDocumentStart,
+                forMainFrameOnly: false
+            ),
+        ]
+    }
+
+    /// Watches the page's own `<video>` and reports its clock.
+    ///
+    /// Injected per frame because the embed players live inside one. The seek
+    /// waits for `loadedmetadata` — assigning `currentTime` before the media is
+    /// seekable is ignored by browsers — and a position near the very start is
+    /// left alone so "resume" does not rewind a fresh playback.
+    private static func progressScript(startAt: Double?) -> String {
+        let seconds = String(format: "%.3f", max(0, startAt ?? 0))
+        return """
+        (function () {
+          var start = \(seconds);
+          function activeVideo() {
+            var list = document.querySelectorAll('video');
+            for (var i = 0; i < list.length; i++) {
+              if (list[i].readyState > 0) return list[i];
+            }
+            return null;
+          }
+          function report(v) {
+            if (!v || !isFinite(v.duration)) return;
+            try {
+              window.webkit.messageHandlers.\(progressHandler)
+                .postMessage({ p: v.currentTime, d: v.duration });
+            } catch (e) {}
+          }
+          document.addEventListener('loadedmetadata', function () {
+            var v = activeVideo();
+            if (v && start > 0 && isFinite(v.duration) && v.duration > start + 5) {
+              v.currentTime = start;
+            }
+          }, true);
+          setInterval(function () {
+            var v = activeVideo();
+            if (v && !v.paused) report(v);
+          }, 5000);
+          document.addEventListener('pause', function () {
+            report(activeVideo());
+          }, true);
+        })();
+        """
     }
 
     /// deny rules sourced from docs/streamhype-network-map.md §7-§8. Kept a literal

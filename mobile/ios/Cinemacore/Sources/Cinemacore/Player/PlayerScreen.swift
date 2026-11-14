@@ -211,8 +211,19 @@ struct PlayerScreen: View {
     @ViewBuilder
     private func playerSurface() -> some View {
         if let url = model.webStreamURL {
-            WebStreamView(url: url)
-                .accessibilityLabel("Web player")
+            WebStreamView(
+                url: url,
+                startAt: model.webResumeSeconds,
+                onProgress: { position, duration in
+                    model.webEmbedProgress(position: position, duration: duration)
+                }
+            )
+            // The embed URL can be identical from one episode to the next, and
+            // the seek position is injected once when the view is built. Keying
+            // the view on both forces a rebuild when the target moves, which is
+            // the only way a second episode resumes at its own position.
+            .id("\(url.absoluteString)#\(model.webResumeSeconds ?? 0)")
+            .accessibilityLabel("Web player")
                 // The embed owns the transport, so none of ``controls`` — and
                 // with it the player's only exit — is drawn on this branch.
                 // The navigation bar is hidden for every player, so without this
