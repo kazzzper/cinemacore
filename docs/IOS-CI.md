@@ -22,12 +22,23 @@ version: macOS 27 (arm64 only), Xcode 27.1 by default (27.0 and 27.2 also
 installed), Swift 6.4, iOS 27 SDK. `Package.swift` declares
 `swift-tools-version: 6.4`, which that toolchain reads.
 
-Only tag pushes run this job. macOS runner minutes are expensive, so PRs and
-`main` pushes never build iOS; `ci.yml` keeps the Go checks.
+Two paths run on the macOS image:
+
+| Trigger | Job | Publishes |
+|---|---|---|
+| tag `v*` | `ios` | yes, into the GitHub Release |
+| push to `main`, pull request, manual dispatch | `ios-verify` | no, artifacts kept 7 days |
+
+`ios-verify` prints `xcodebuild -list` / `-showdestinations`, runs the same
+`scripts/ios-test` and `scripts/ios-build`, and uploads the results. That is how
+the Xcode project itself is checked without cutting a tag. macOS minutes are
+expensive: the verify job costs a simulator test run plus two builds per push,
+so drop the `pull_request` trigger if that becomes the budget.
 
 ## Pipeline
 
-`.github/workflows/release.yml`, job `ios`:
+`.github/workflows/release.yml`, jobs `ios` (tag) and `ios-verify` (everything
+else), both on the `xcode-27` image:
 
 1. `xcodebuild -version`, `xcrun --find swift`, `swift --version`,
    `xcodebuild -showsdks` — so a toolchain problem is visible in the log.

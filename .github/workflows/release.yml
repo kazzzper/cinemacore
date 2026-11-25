@@ -1,9 +1,16 @@
 name: release
 
+# Tag pushes cut a release. Branch, PR and manual runs verify the same macOS
+# build without publishing, so the iOS artifact path is exercised by CI rather
+# than by cutting a throwaway tag.
 on:
   push:
     tags:
       - "v*"
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -14,6 +21,7 @@ concurrency:
 
 jobs:
   verify:
+    if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v7
@@ -24,6 +32,7 @@ jobs:
 
   android:
     needs: verify
+    if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v7
@@ -65,6 +74,7 @@ jobs:
 
   ios:
     needs: verify
+    if: startsWith(github.ref, 'refs/tags/v')
     # Xcode 27 image: macOS 27, Xcode 27.1 by default, Swift 6.4, iOS 27 SDK.
     # arm64 only. Apple tooling only: no xtool, no brew installs.
     runs-on: xcode-27
@@ -94,8 +104,41 @@ jobs:
           path: ${{ github.workspace }}/release/
           if-no-files-found: error
 
+  # Every non-tag run proves the committed project still builds and its tests
+  # still pass, on the same image the release uses. Nothing here publishes.
+  ios-verify:
+    if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+    runs-on: xcode-27
+    env:
+      NSUnbufferedIO: YES
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Toolchain
+        run: |
+          xcodebuild -version
+          xcrun --find swift
+          swift --version
+      - name: Xcode project
+        working-directory: mobile/ios/Cinemacore
+        run: |
+          xcodebuild -list -project Cinemacore.xcodeproj
+          xcodebuild -showdestinations -project Cinemacore.xcodeproj -scheme Cinemacore | head -20
+      - name: iOS unit tests
+        run: ./scripts/ios-test
+      - name: Build unsigned iOS artifacts
+        run: ./scripts/ios-build
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ios-verify
+          path: ${{ github.workspace }}/release/
+          if-no-files-found: error
+          retention-days: 7
+
   publish:
     needs: [android, ios]
+    if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v7
