@@ -25,8 +25,9 @@ brew install xtool-org/tap/xtool
 `Generated/Version.xcconfig`, `INFOPLIST_FILE=Generated/Info.plist`,
 `GENERATE_INFOPLIST_FILE=NO`, `INFOPLIST_EXPAND_BUILD_SETTINGS=YES` and
 `CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO`. That expands the generated
-plist to the concrete `VERSION`, build number and commit. Where `xcodebuild` is
-unavailable (Linux), the script uses `scripts/xtool` for the same two artifacts.
+plist to the concrete `VERSION`, build number and commit. On Linux the script
+falls back to `scripts/xtool` for local builds; CI requires `xcodebuild` and
+fails instead of falling back.
 
 The job then:
 
