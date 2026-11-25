@@ -263,3 +263,4 @@ iOS
 - 2026-11-25T15:34:04.254Z — claimed T-036 — Release tracking, version embedding and tag CI
 - 2026-11-25T15:34:04.297Z — updated T-036: VERSION baseline, shared version scripts, make targets, iOS/Android embedding and settings rows, unsigned xcodebuild tag release, docs, dry-run verified
 - 2026-11-25T15:34:04.347Z — done T-036
+- 2026-11-25T16:01:57.000Z — T-036 follow-up: make build stamps VERSION; artifacts now go to gitignored release/; added make tag, dev-ios, dev-android, android-release (debug-signed fallback verified, versionCode 131/0.0.1-beta.1); tagged v0.0.1-beta.1 at 1560e4b (not pushed)
