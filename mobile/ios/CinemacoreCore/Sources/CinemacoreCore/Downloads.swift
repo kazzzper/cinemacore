@@ -1745,26 +1745,38 @@ public actor DownloadEngine {
         continuations[token] = nil
     }
 
+    /// `stat`, not `URL.resourceValues`: NSURL caches resource values per
+    /// instance, so a partial written after the first read kept reporting its
+    /// old size and resume offsets and completion checks went stale.
     private func fileSize(_ url: URL) -> Int64 {
-        guard let values = try? url.resourceValues(forKeys: [.isDirectoryKey, .fileSizeKey]) else {
+        var isDirectory: ObjCBool = false
+        guard fileManager.fileExists(atPath: url.path, isDirectory: &isDirectory) else {
             return 0
         }
-        if values.isDirectory == true {
+        if isDirectory.boolValue {
             guard let children = fileManager.enumerator(
                 at: url,
-                includingPropertiesForKeys: [.isRegularFileKey, .fileSizeKey],
+                includingPropertiesForKeys: nil,
                 options: [.skipsHiddenFiles]
-            ) else { return 0 }
+            ) else {
+                return 0
+            }
             var total: Int64 = 0
             for case let child as URL in children {
-                guard let childValues = try? child.resourceValues(
-                    forKeys: [.isRegularFileKey, .fileSizeKey]
-                ), childValues.isRegularFile == true else { continue }
-                total += Int64(childValues.fileSize ?? 0)
+                var childIsDirectory: ObjCBool = false
+                guard fileManager.fileExists(atPath: child.path, isDirectory: &childIsDirectory),
+                      !childIsDirectory.boolValue,
+                      let childAttributes = try? fileManager.attributesOfItem(atPath: child.path),
+                      let childSize = childAttributes[.size] as? NSNumber
+                else { continue }
+                total += childSize.int64Value
             }
             return total
         }
-        return Int64(values.fileSize ?? 0)
+        guard let attributes = try? fileManager.attributesOfItem(atPath: url.path),
+              let size = attributes[.size] as? NSNumber
+        else { return 0 }
+        return size.int64Value
     }
 }
 

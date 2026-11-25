@@ -335,10 +335,16 @@ public actor ProgressiveAssetStore {
         return ByteRange(start: start, end: min(end, total - 1))
     }
 
+    /// Reads the size with `stat` rather than `URL.resourceValues`: NSURL caches
+    /// resource values per instance, so a growing partial reported its size
+    /// from the first read and the server served a truncated prefix.
     private func fileSize(_ url: URL) -> Int64 {
-        guard let values = try? url.resourceValues(forKeys: [.isDirectoryKey, .fileSizeKey]),
-              values.isDirectory != true
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory),
+              !isDirectory.boolValue,
+              let attributes = try? FileManager.default.attributesOfItem(atPath: url.path),
+              let size = attributes[.size] as? NSNumber
         else { return 0 }
-        return Int64(values.fileSize ?? 0)
+        return size.int64Value
     }
 }

@@ -152,11 +152,13 @@ final class MockCatalogRepository: CatalogRepository, @unchecked Sendable {
 }
 
 /// Polls for an observable outcome instead of sleeping a fixed span, so the
-/// debounce tests assert on state rather than wall-clock precision.
+/// debounce tests assert on state rather than wall-clock precision. The budget
+/// is generous on purpose: every suite runs in parallel, so a simulator runner
+/// can leave a 280 ms debounce task queued behind main-actor work for seconds.
 @MainActor
 private func waitUntil(
     _ description: String,
-    timeout: Duration = .seconds(5),
+    timeout: Duration = .seconds(60),
     _ condition: () -> Bool
 ) async {
     let deadline = ContinuousClock.now.advanced(by: timeout)
