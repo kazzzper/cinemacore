@@ -1,0 +1,139 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v7
+        with:
+          go-version: "1.27"
+      - name: Tag matches VERSION
+        run: node scripts/version --check --tag "$GITHUB_REF_NAME"
+      - name: Go tests
+        run: go test ./... -race
+      - name: Go build
+        run: go build ./...
+
+  android:
+    needs: verify
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: android-actions/setup-android@v4
+      - name: Install platform 37
+        run: sdkmanager --install "platforms;android-37"
+      - uses: gradle/actions/setup-gradle@v6
+      - name: Derive release identity
+        working-directory: .
+        run: node scripts/version --env >> "$GITHUB_ENV"
+      - name: Unit tests
+        working-directory: mobile/android
+        run: ./gradlew --no-daemon :app:testDebugUnitTest
+      - name: Build artifacts
+        working-directory: mobile/android
+        run: ./gradlew --no-daemon :app:assembleDebug :app:bundleRelease
+      - name: Verify embedded Android version
+        run: |
+          AAPT=$(find "$ANDROID_HOME/build-tools" -name aapt -type f | sort -V | tail -1)
+          BADGING=$("$AAPT" dump badging mobile/android/app/build/outputs/apk/debug/app-debug.apk | head -1)
+          CODE=$(printf '%s' "$BADGING" | sed -E "s/.*versionCode='([^']+)'.*/\1/")
+          NAME=$(printf '%s' "$BADGING" | sed -E "s/.*versionName='([^']+)'.*/\1/")
+          test "$CODE" = "$APP_BUILD_NUMBER" || { echo "versionCode $CODE != $APP_BUILD_NUMBER" >&2; exit 1; }
+          test "$NAME" = "$APP_FULL_VERSION" || { echo "versionName $NAME != $APP_FULL_VERSION" >&2; exit 1; }
+      - name: Collect
+        run: |
+          mkdir -p dist
+          cp mobile/android/app/build/outputs/apk/debug/app-debug.apk "dist/Cinemacore-${APP_TAG}-debug.apk"
+          cp mobile/android/app/build/outputs/bundle/release/app-release.aab "dist/Cinemacore-${APP_TAG}-release.aab"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: android
+          path: dist/*
+          if-no-files-found: error
+
+  ios:
+    needs: verify
+    # Xcode 27 is the current GA Xcode runner; the repo needs Swift 6.4 / SDK 27.
+    runs-on: xcode-27
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Install xtool
+        run: brew install xtool-org/tap/xtool
+      # Same script as `make ios-release`; it verifies the embedded identity.
+      - name: Build unsigned iOS artifacts
+        run: ./scripts/ios-build
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ios
+          path: dist/*
+          if-no-files-found: error
+
+  publish:
+    needs: [android, ios]
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/download-artifact@v8
+        with:
+          path: dist
+      - name: Derive release identity
+        id: meta
+        run: |
+          node scripts/version --env >> "$GITHUB_ENV"
+          if [[ "$APP_VERSION" == *-* ]]; then
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+            echo "moving=beta" >> "$GITHUB_OUTPUT"
+          else
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+            echo "moving=stable" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Extract release notes
+        run: |
+          node - <<'NODE'
+          const fs = require('node:fs');
+          const version = process.env.APP_VERSION;
+          const changelog = fs.readFileSync('CHANGELOG.md', 'utf8');
+          const start = changelog.indexOf(`## [${version}]`);
+          if (start === -1) {
+            fs.writeFileSync('release-notes.md', `Release ${version}`);
+            process.exit(0);
+          }
+          const rest = changelog.slice(start);
+          const next = rest.indexOf('\n## [', 1);
+          fs.writeFileSync('release-notes.md', (next === -1 ? rest : rest.slice(0, next)).trim() + '\n');
+          NODE
+      - uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          body_path: release-notes.md
+          prerelease: ${{ steps.meta.outputs.prerelease == 'true' }}
+          files: dist/**/*
+          fail_on_unmatched_files: true
+      - name: Move stable or beta tag
+        run: |
+          git tag -fa "${{ steps.meta.outputs.moving }}" -m "$APP_VERSION" "$GITHUB_SHA"
+          git push origin "refs/tags/${{ steps.meta.outputs.moving }}" --force

@@ -4,12 +4,15 @@ on:
   push:
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   go:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version: "1.27"
       - name: Format
@@ -22,14 +25,58 @@ jobs:
         run: go build ./...
 
   contract:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Validate OpenAPI
         # Pinned deliberately. `@latest` floated across Redocly majors and its
         # default ruleset changed under us, turning this job red with no change
         # to the contract. Bump it on purpose, not by accident.
         run: npx --yes @redocly/cli@2.64.1 lint contracts/openapi.yaml
 
-  # android: requires JDK 17 + Android SDK (see tasks/T-006)
-  # ios: requires macOS + Xcode 27 (see tasks/T-007)
+  version:
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@v7
+      - name: Validate VERSION
+        run: node scripts/version --check
+      - name: Generate iOS release metadata
+        run: node scripts/generate-version
+      - name: Generated metadata matches VERSION
+        run: |
+          node - <<'NODE'
+          const fs = require('node:fs');
+          const { execFileSync } = require('node:child_process');
+          const info = JSON.parse(execFileSync('node', ['scripts/version', '--json'], { encoding: 'utf8' }));
+          const config = fs.readFileSync('mobile/ios/Cinemacore/Generated/Version.xcconfig', 'utf8');
+          for (const [key, value] of [
+            ['APP_FULL_VERSION', info.version],
+            ['MARKETING_VERSION', info.marketing],
+            ['CURRENT_PROJECT_VERSION', String(info.build)],
+            ['APP_COMMIT', info.commit],
+          ]) {
+            if (!config.includes(`${key} = ${value}`)) {
+              console.error(`${key} missing or stale in Version.xcconfig`);
+              process.exit(1);
+            }
+          }
+          NODE
+
+  pr-title:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-26.04
+    steps:
+      - name: Conventional Commits subject
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          pattern='^(feat|fix|refactor|perf|test|docs|build|ci|chore|style)(\([a-z0-9._/-]+\))?!?: .+'
+          if ! printf '%s' "$TITLE" | grep -Eq "$pattern"; then
+            echo "✖ PR title must be Conventional Commits, e.g. feat(ios): add version row" >&2
+            echo "  Got: $TITLE" >&2
+            exit 1
+          fi
+          if [ "${#TITLE}" -gt 72 ]; then
+            echo "✖ PR title is ${#TITLE} chars; keep it ≤72" >&2
+            exit 1
+          fi
