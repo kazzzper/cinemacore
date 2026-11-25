@@ -1,9 +1,10 @@
 # iOS CI
 
-The app is a SwiftPM/xtool project, not a committed `.xcodeproj`. Local builds
-still use `xtool dev build` and are unchanged. CI uses the normal Xcode pipeline:
-it generates an Xcode project with xtool, then drives `xcodebuild` directly with
-signing disabled.
+The app is a SwiftPM/xtool project, not a committed `.xcodeproj`. CI uses Xcode:
+xtool generates the project, then `xcodebuild` builds the app target for device
+and simulator with signing disabled. The generated project has no shared
+schemes, so the script builds `-target Cinemacore-App` instead of `-scheme`.
+Nothing is signed.
 
 Only tag pushes run this job. macOS runner minutes are expensive, so PRs and
 `main` pushes never build iOS.
@@ -20,18 +21,20 @@ brew install xtool-org/tap/xtool
 `scripts/ios-build` is also `make ios-release`. It runs
 `scripts/version --env`, `scripts/generate-version`,
 `xtool dev generate-xcode-project`, then two `xcodebuild` commands
-(`-sdk iphoneos` and `-sdk iphonesimulator`) with `Generated/Version.xcconfig`,
-`INFOPLIST_FILE=Generated/Info.plist`, `GENERATE_INFOPLIST_FILE=NO`,
-`INFOPLIST_EXPAND_BUILD_SETTINGS=YES` and
-`CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO`. The job then:
+(`-sdk iphoneos` and `-sdk iphonesimulator`) with
+`Generated/Version.xcconfig`, `INFOPLIST_FILE=Generated/Info.plist`,
+`GENERATE_INFOPLIST_FILE=NO`, `INFOPLIST_EXPAND_BUILD_SETTINGS=YES` and
+`CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO`. That expands the generated
+plist to the concrete `VERSION`, build number and commit. Where `xcodebuild` is
+unavailable (Linux), the script uses `scripts/xtool` for the same two artifacts.
+
+The job then:
 
 1. reads `AppFullVersion`, `CFBundleVersion`, `AppCommit` and
-   `CFBundleShortVersionString` from both built apps and fails if any differs
-   from the tag;
-2. packages the device app as `Cinemacore-<tag>-unsigned.ipa`
-   (`Payload/` + zip);
-3. packages the simulator app as `Cinemacore-<tag>-simulator.app.zip` with
-   `ditto`;
+   `CFBundleShortVersionString` from the IPA's app and the simulator app, and
+   fails if any differs from the tag;
+2. writes the device app as `release/Cinemacore-<tag>-unsigned.ipa`;
+3. writes the simulator app as `release/Cinemacore-<tag>-simulator.app.zip`;
 4. uploads both to the GitHub Release.
 
 No certificate, provisioning profile, Apple ID, App Store Connect key, Fastlane
@@ -64,14 +67,14 @@ free Apple ID; the signature lasts 7 days, then re-sideload. See
 
 ## Troubleshooting
 
-- **`Cinemacore.xcodeproj` or scheme not found** — run
-  `xtool dev generate-xcode-project` locally (macOS) and `xcodebuild -list`;
-  adjust the scheme in the workflow.
-- **`.app` not under the expected path** — the workflow finds any `*.app` in the
-  Release build products directory, so product-name changes are tolerated.
-- **Version check fails** — confirm `INFOPLIST_FILE=Generated/Info.plist` and
-  `-xcconfig Generated/Version.xcconfig` are both present. A stale generated
-  plist is the usual cause.
+- **`missing .../xtool/Cinemacore.ipa`** — the build did not finish; run
+  `make ios-release` locally to see the compiler output.
+- **Version check fails** — confirm `-xcconfig Generated/Version.xcconfig` and
+  `INFOPLIST_FILE=Generated/Info.plist` are used; a raw `xtool dev build` keeps
+  the committed `0.0.0-dev` fallbacks.
+- **`xcodebuild: error: The project ... does not contain a target named ...`** —
+  set `IOS_TARGET` (and `IOS_PRODUCT` / `xtool.yml` `product`) to match the
+  generated target, which xtool names `<product>-App`.
 
 ## TODO: signed uploads later
 
@@ -81,8 +84,8 @@ Do not enable any of this without an Apple Developer account. When one exists:
       `APPLE_API_PRIVATE_KEY` as GitHub Secrets.
 - [ ] Add a distribution certificate + App Store provisioning profile (or move
       to Fastlane match) and a keychain-import step.
-- [ ] Replace `CODE_SIGNING_ALLOWED=NO` with archive/export
-      (`-exportArchive`, `method=app-store-connect`) in a separate gated job.
+- [ ] Sign the device build (xtool `--sign` or `xcodebuild` archive/export)
+      in a separate gated job.
 - [ ] Upload with `xcrun altool`/`notarytool` or `fastlane pilot` on `rc`/stable
       only, behind a protected `release` environment and manual approval.
 - [ ] Keep the unsigned IPA + simulator zip artifacts regardless.

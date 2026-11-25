@@ -1,18 +1,18 @@
 #!/usr/bin/env bash
-# The one unsigned iOS pipeline: generate the project and version inputs, build
-# device + simulator with signing off, verify the embedded identity, package.
-# CI (.github/workflows/release.yml) and `make ios-release` both call this.
+# The one unsigned iOS pipeline: device .ipa + simulator .app, verified against
+# VERSION and packaged into release/. CI and `make ios-release` both call this.
+#
+# macOS uses xcodebuild on the project `xtool dev generate-xcode-project`
+# emits. That project has no shared schemes, so build the target by name
+# instead of selecting a scheme. Elsewhere xtool builds the same artifacts.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 IOS="$ROOT/mobile/ios/Cinemacore"
-SCHEME="${IOS_SCHEME:-}"
-TMP="${RUNNER_TEMP:-$(mktemp -d)}"
-
-if ! command -v xcodebuild >/dev/null 2>&1; then
-  echo "ios-build: xcodebuild is required (macOS only)" >&2
-  exit 1
-fi
+APP="${IOS_PRODUCT:-Cinemacore}"
+OUT="$ROOT/release"
+TMP="$(mktemp -d)"
+trap 'rm -rf "$TMP"' EXIT
 
 set -a
 # shellcheck disable=SC1090
@@ -21,66 +21,85 @@ set +a
 
 cd "$ROOT"
 node scripts/generate-version
-cd "$IOS"
 
-# xtool emits a workspace wrapping a project in xtool/.xtool-tmp; it never
-# writes Cinemacore.xcodeproj next to the package, which is why CI used to fail.
-xtool dev generate-xcode-project
-WORKSPACE="$IOS/xtool/Cinemacore.xcworkspace"
-if [ -z "$SCHEME" ]; then
-  SCHEME=$(xcodebuild -list -json -workspace "$WORKSPACE" | python3 -c '
-import json, sys
-schemes = json.load(sys.stdin)["workspace"]["schemes"]
-print(next(s for s in schemes if "Cinemacore" in s))
-')
+if command -v xcodebuild >/dev/null 2>&1; then
+  cd "$IOS"
+  xtool dev generate-xcode-project
+  PROJECT="$IOS/xtool/.xtool-tmp/Cinemacore.xcodeproj"
+  TARGET="${IOS_TARGET:-$APP-App}"
+  if [ ! -d "$PROJECT" ]; then
+    echo "ios-build: xtool did not write $PROJECT" >&2
+    exit 1
+  fi
+  xcodebuild -list -project "$PROJECT"
+
+  build_xcode() {
+    xcodebuild \
+      -project "$PROJECT" \
+      -target "$TARGET" \
+      -configuration Release \
+      -sdk "$1" \
+      SYMROOT="$2" OBJROOT="$2/obj" \
+      -xcconfig "$IOS/Generated/Version.xcconfig" \
+      INFOPLIST_FILE="$IOS/Generated/Info.plist" \
+      GENERATE_INFOPLIST_FILE=NO INFOPLIST_EXPAND_BUILD_SETTINGS=YES \
+      CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+      build
+  }
+  build_xcode iphoneos "$TMP/device"
+  build_xcode iphonesimulator "$TMP/sim"
+
+  DEVICE_APP=$(find "$TMP/device/Release-iphoneos" -maxdepth 1 -name '*.app' | head -1)
+  SIM_APP=$(find "$TMP/sim/Release-iphonesimulator" -maxdepth 1 -name '*.app' | head -1)
+  test -n "$DEVICE_APP" || { echo "ios-build: no device .app under $TMP" >&2; exit 1; }
+  test -n "$SIM_APP" || { echo "ios-build: no simulator .app under $TMP" >&2; exit 1; }
+
+  mkdir -p "$TMP/Payload"
+  cp -R "$DEVICE_APP" "$TMP/Payload/"
+  IPA="$TMP/Cinemacore-${APP_TAG}-unsigned.ipa"
+  (cd "$TMP" && zip -qry "$IPA" Payload)
+else
+  if ! command -v xtool >/dev/null 2>&1; then
+    echo "ios-build: needs xcodebuild or xtool" >&2
+    exit 1
+  fi
+  # scripts/xtool swaps the concrete VERSION into Info.plist for the build and
+  # restores the committed dev fallback afterwards.
+  "$ROOT/scripts/xtool" dev build --configuration release --ipa
+  "$ROOT/scripts/xtool" dev build --configuration release --triple arm64-apple-ios-simulator
+  IPA="$IOS/xtool/$APP.ipa"
+  SIM_APP="$IOS/xtool/$APP.app"
+  test -f "$IPA" || { echo "ios-build: missing $IPA" >&2; exit 1; }
+  test -d "$SIM_APP" || { echo "ios-build: missing $SIM_APP" >&2; exit 1; }
+  unzip -q "$IPA" -d "$TMP"
+  DEVICE_APP=$(find "$TMP/Payload" -maxdepth 1 -name '*.app' | head -1)
+  test -n "$DEVICE_APP" || { echo "ios-build: no .app in $IPA" >&2; exit 1; }
 fi
-xcodebuild -list -workspace "$WORKSPACE"
 
-xcodebuild \
-  -workspace "$WORKSPACE" \
-  -scheme "$SCHEME" \
-  -configuration Release \
-  -sdk iphoneos \
-  -derivedDataPath "$TMP/dd-device" \
-  -xcconfig "$IOS/Generated/Version.xcconfig" \
-  INFOPLIST_FILE="$IOS/Generated/Info.plist" \
-  GENERATE_INFOPLIST_FILE=NO INFOPLIST_EXPAND_BUILD_SETTINGS=YES \
-  CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
-  build
-
-xcodebuild \
-  -workspace "$WORKSPACE" \
-  -scheme "$SCHEME" \
-  -configuration Release \
-  -sdk iphonesimulator \
-  -destination "generic/platform=iOS Simulator" \
-  -derivedDataPath "$TMP/dd-sim" \
-  -xcconfig "$IOS/Generated/Version.xcconfig" \
-  INFOPLIST_FILE="$IOS/Generated/Info.plist" \
-  GENERATE_INFOPLIST_FILE=NO INFOPLIST_EXPAND_BUILD_SETTINGS=YES \
-  CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
-  build
-
-DEVICE_APP=$(find "$TMP/dd-device/Build/Products/Release-iphoneos" -maxdepth 1 -name '*.app' | head -1)
-SIM_APP=$(find "$TMP/dd-sim/Build/Products/Release-iphonesimulator" -maxdepth 1 -name '*.app' | head -1)
-test -n "$DEVICE_APP"
-test -n "$SIM_APP"
-
-check() {
-  /usr/libexec/PlistBuddy -c 'Print :AppFullVersion' "$1/Info.plist" | grep -Fxq "$APP_FULL_VERSION"
-  /usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$1/Info.plist" | grep -Fxq "$APP_BUILD_NUMBER"
-  /usr/libexec/PlistBuddy -c 'Print :AppCommit' "$1/Info.plist" | grep -Fxq "$APP_COMMIT"
-  /usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$1/Info.plist" | grep -Fxq "$MARKETING_VERSION"
+check_plist() {
+  python3 - "$1" "$APP_FULL_VERSION" "$APP_BUILD_NUMBER" "$APP_COMMIT" "$MARKETING_VERSION" <<'PY'
+import plistlib, sys
+path, full, build, commit, marketing = sys.argv[1:]
+with open(path, "rb") as fh:
+    plist = plistlib.load(fh)
+expected = {
+    "AppFullVersion": full,
+    "CFBundleVersion": build,
+    "AppCommit": commit,
+    "CFBundleShortVersionString": marketing,
 }
-check "$DEVICE_APP"
-check "$SIM_APP"
+for key, want in expected.items():
+    got = plist.get(key)
+    if str(got) != want:
+        sys.exit(f"{key}={got!r}, expected {want!r} in {path}")
+PY
+}
+check_plist "$DEVICE_APP/Info.plist"
+check_plist "$SIM_APP/Info.plist"
 
-mkdir -p "$TMP/Payload" "$ROOT/release"
-cp -R "$DEVICE_APP" "$TMP/Payload/"
-(cd "$TMP" && zip -qry "Cinemacore-${APP_TAG}-unsigned.ipa" Payload)
-ditto -c -k --sequesterRsrc --keepParent "$SIM_APP" "Cinemacore-${APP_TAG}-simulator.app.zip"
-mv "$TMP/Cinemacore-${APP_TAG}-unsigned.ipa" "$ROOT/release/"
-mv "Cinemacore-${APP_TAG}-simulator.app.zip" "$ROOT/release/"
+mkdir -p "$OUT"
+cp "$IPA" "$OUT/Cinemacore-${APP_TAG}-unsigned.ipa"
+(cd "$(dirname "$SIM_APP")" && zip -qry "$OUT/Cinemacore-${APP_TAG}-simulator.app.zip" "$(basename "$SIM_APP")")
 
 echo "ios-build: ${APP_FULL_VERSION} (${APP_BUILD_NUMBER}) ${APP_COMMIT}"
 echo "  release/Cinemacore-${APP_TAG}-unsigned.ipa"

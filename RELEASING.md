@@ -62,13 +62,14 @@ node scripts/generate-version     # writes mobile/ios/Cinemacore/Generated/*
 
 | Surface | Source at build time | Local fallback |
 |---|---|---|
-| iOS | `Generated/Version.xcconfig` + `Generated/Info.plist` via xcodebuild | `0.0.0-dev`, build `0`, commit `local` |
+| iOS | concrete `Info.plist` written by `scripts/xtool` from `VERSION` | `0.0.0-dev`, build `0`, commit `local` |
 | Android | `APP_FULL_VERSION`, `APP_BUILD_NUMBER`, `APP_COMMIT` env -> Gradle | `0.0.0-dev`, build `1`, commit `local` |
 | Web | `__APP_VERSION__`, `__BUILD_NUMBER__`, `__APP_COMMIT__` defines | same dev fallbacks |
 
 `Generated/` is gitignored. Local `xtool dev build` reads the concrete fallbacks
 in `mobile/ios/Cinemacore/Info.plist`; xtool does not expand `$(BUILD_SETTINGS)`.
-CI xcodebuild uses the generated variable-bearing plist and xcconfig.
+`make ios-release` and CI run `scripts/ios-build`, which goes through
+`scripts/xtool` for both the device IPA and the simulator app.
 
 The About/Settings screen on iOS and Android shows
 `vX.Y.Z[-channel.N] (build) commit`; tap it to copy. The first web app must do

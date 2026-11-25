@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-// Generate the iOS Xcode inputs. CI xcodebuild uses Generated/Info.plist +
-// Generated/Version.xcconfig; scripts/xtool asks for the concrete mode because
-// xtool does not expand $(BUILD_SETTINGS).
+// Generate the iOS Xcode inputs. Generated/Version.xcconfig serves the optional
+// xcodebuild target; scripts/xtool asks for the concrete mode because xtool does
+// not expand $(BUILD_SETTINGS).
 const fs = require('node:fs');
 const path = require('node:path');
 const {

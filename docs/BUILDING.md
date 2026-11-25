@@ -43,19 +43,22 @@ restoring it on exit (even on failure). Use the wrapper, not raw
 copies the result into `release/`, named from `VERSION`, so the tag travels
 with the artifact on every build without extra flags.
 
-## iOS with Xcode
+## iOS release
 
 ```bash
 make version               # Generated/Version.xcconfig + Generated/Info.plist
-make ios-xcode             # generated Xcode project, unsigned simulator build
+make ios-xcode             # optional: generated Xcode project, simulator build
 make ios-release           # exact CI pipeline: unsigned .ipa + simulator .app.zip
 ```
 
 `make ios-release` calls `scripts/ios-build`, the same script the tag workflow
-runs. It builds device and simulator with `CODE_SIGNING_ALLOWED=NO`, verifies
-`AppFullVersion`, `CFBundleVersion`, `AppCommit` and `CFBundleShortVersionString`
-inside both apps, and writes `release/`. It requires macOS and Xcode 27; there is no
-signing and no Apple account. See [`IOS-CI.md`](IOS-CI.md) for sideloading.
+runs. On macOS it generates the Xcode project with xtool and builds the device
+and simulator app with `xcodebuild`; without Xcode it uses `xtool` directly. Both
+paths verify `AppFullVersion`, `CFBundleVersion`, `AppCommit` and
+`CFBundleShortVersionString` inside the outputs and write
+`release/Cinemacore-v<version>-unsigned.ipa` and
+`release/Cinemacore-v<version>-simulator.app.zip`. There is no signing and no
+Apple account. See [`IOS-CI.md`](IOS-CI.md) for sideloading.
 
 The generated `.xcodeproj` and `Generated/` are gitignored.
 
