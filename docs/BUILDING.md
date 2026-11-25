@@ -32,14 +32,16 @@ the device must be authorised and visible in `adb devices`.
 
 ```bash
 make ios-xtool ARGS="--configuration release --ipa"
-# equivalent to: scripts/xtool dev build --configuration release --ipa
+make ios-ipa               # unsigned device .ipa -> release/Cinemacore-v<version>-unsigned.ipa
 ```
 
 xtool does not expand `$(BUILD_SETTINGS)` in Info.plist. The committed
 `Info.plist` is therefore the `0.0.0-dev` / `local` fallback, and
 `scripts/xtool` swaps in a concrete plist with the real version for the build,
 restoring it on exit (even on failure). Use the wrapper, not raw
-`xtool dev build`, when you need the version embedded.
+`xtool dev build`, when you need the version embedded. `make ios-ipa` also
+copies the result into `release/`, named from `VERSION`, so the tag travels
+with the artifact on every build without extra flags.
 
 ## iOS with Xcode
 

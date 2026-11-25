@@ -26,7 +26,7 @@ help:
 	  '' \
 	  'iOS' \
 	  '  make ios-xtool ARGS="..."    xtool build with the real version embedded' \
-	  '  make ios-ipa ARGS="..."      unsigned device .ipa via xtool' \
+	  '  make ios-ipa ARGS="..."      unsigned device .ipa via xtool -> release/' \
 	  '  make ios-xcode               unsigned simulator build via xcodebuild' \
 	  '  make ios-release             exact CI pipeline: unsigned .ipa + simulator .app.zip' \
 	  '' \
@@ -79,7 +79,10 @@ ios-xtool:
 	./scripts/xtool dev build $(ARGS)
 
 ios-ipa:
-	./scripts/xtool dev build --configuration release --ipa $(ARGS)
+	@set -a; source <(./scripts/version --env); set +a; \
+	./scripts/xtool dev build --configuration release --ipa $(ARGS) && \
+	mkdir -p $(RELEASE_DIR) && \
+	cp $(IOS)/xtool/Cinemacore.ipa $(RELEASE_DIR)/Cinemacore-$$APP_TAG-unsigned.ipa
 
 ios-xcode: version
 	cd $(IOS) && xtool dev generate-xcode-project
