@@ -42,8 +42,8 @@ xcodebuild \
   -configuration Release \
   -sdk iphoneos \
   -derivedDataPath "$TMP/dd-device" \
-  -xcconfig Generated/Version.xcconfig \
-  INFOPLIST_FILE=Generated/Info.plist \
+  -xcconfig "$IOS/Generated/Version.xcconfig" \
+  INFOPLIST_FILE="$IOS/Generated/Info.plist" \
   GENERATE_INFOPLIST_FILE=NO INFOPLIST_EXPAND_BUILD_SETTINGS=YES \
   CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
   build
@@ -55,8 +55,8 @@ xcodebuild \
   -sdk iphonesimulator \
   -destination "generic/platform=iOS Simulator" \
   -derivedDataPath "$TMP/dd-sim" \
-  -xcconfig Generated/Version.xcconfig \
-  INFOPLIST_FILE=Generated/Info.plist \
+  -xcconfig "$IOS/Generated/Version.xcconfig" \
+  INFOPLIST_FILE="$IOS/Generated/Info.plist" \
   GENERATE_INFOPLIST_FILE=NO INFOPLIST_EXPAND_BUILD_SETTINGS=YES \
   CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
   build
