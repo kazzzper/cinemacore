@@ -42,7 +42,9 @@ mobile/android/app/build/
 # `.build*/` covers scratch-path variants: .build, .build-main, .build-fixtures.
 .build*/
 .swiftpm/
+# The iOS app target is checked in: release CI must build with Xcode alone.
 *.xcodeproj/
+!mobile/ios/Cinemacore/Cinemacore.xcodeproj/
 *.xcresult
 *.xcuserstate
 xcuserdata/

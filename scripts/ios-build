@@ -2,21 +2,24 @@
 # The one unsigned iOS pipeline: device .ipa + simulator .app, verified against
 # VERSION and packaged into release/. CI and `make ios-release` both call this.
 #
-# Xcode does the build. `xtool dev generate-xcode-project` only supplies the app
-# target, and the concrete version goes into the plist that target already
-# points at: passing INFOPLIST_FILE/GENERATE_INFOPLIST_FILE on the command line
-# also hits SwiftPM's resource bundles and stops them generating their plists.
+# Xcode only: the app target lives in the checked-in Cinemacore.xcodeproj, so
+# nothing here generates a project. xtool stays a local build driver
+# (`make dev-ios`), never part of a release.
+#
+# The concrete version is written into the committed Info.plist that the target
+# points at, then restored. Passing INFOPLIST_FILE on the command line instead
+# would apply to every target in that build, including SwiftPM's dependency
+# bundles, whose own Info.plist generation then fails.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 IOS="$ROOT/mobile/ios/Cinemacore"
-APP="${IOS_PRODUCT:-Cinemacore}"
+PROJECT="$IOS/Cinemacore.xcodeproj"
+PRODUCT_INFO="$IOS/Info.plist"
 OUT="$ROOT/release"
 TMP="$(mktemp -d)"
-PROJECT_INFO=""
 restore_plist() {
-  [ -n "$PROJECT_INFO" ] && [ -f "$TMP/project-Info.plist" ] &&
-    cp "$TMP/project-Info.plist" "$PROJECT_INFO"
+  [ -f "$TMP/Info.plist" ] && cp "$TMP/Info.plist" "$PRODUCT_INFO"
 }
 trap 'restore_plist; rm -rf "$TMP"' EXIT
 
@@ -28,47 +31,42 @@ for name in APP_FULL_VERSION APP_BUILD_NUMBER APP_COMMIT MARKETING_VERSION APP_T
   [ -n "$value" ] || { echo "ios-build: $name missing from scripts/version --env" >&2; exit 1; }
 done
 
-cd "$ROOT"
-node scripts/generate-version
-
 if ! command -v xcodebuild >/dev/null 2>&1; then
   echo "ios-build: xcodebuild is required (macOS). On Linux use make ios-ipa." >&2
   exit 1
 fi
-if ! command -v xtool >/dev/null 2>&1; then
-  echo "ios-build: xtool is required to generate the Xcode project" >&2
+if [ ! -d "$PROJECT" ]; then
+  echo "ios-build: $PROJECT is missing; it is checked in, not generated." >&2
   exit 1
 fi
 
-cd "$IOS"
-xtool dev generate-xcode-project
-PROJECT="$IOS/xtool/.xtool-tmp/Cinemacore.xcodeproj"
-PROJECT_INFO="$IOS/xtool/.xtool-tmp/Cinemacore/Info.plist"
-TARGET="${IOS_TARGET:-$APP-App}"
-if [ ! -d "$PROJECT" ] || [ ! -f "$PROJECT_INFO" ]; then
-  echo "ios-build: xtool did not write a usable project under $IOS/xtool/.xtool-tmp" >&2
-  exit 1
-fi
-cp "$PROJECT_INFO" "$TMP/project-Info.plist"
-node "$ROOT/scripts/generate-version" --concrete "$PROJECT_INFO" --source "$TMP/project-Info.plist"
+cp "$PRODUCT_INFO" "$TMP/Info.plist"
+node "$ROOT/scripts/generate-version" --concrete "$PRODUCT_INFO" --source "$TMP/Info.plist"
 
+# The device app must stay unsigned: it is re-signed by whoever sideloads it.
+# The simulator app must be ad-hoc signed, or arm64 simulators refuse to launch
+# it (and Keychain-backed storage loses its identity).
 build_xcode() {
+  local destination="$1" path="$2"
+  shift 2
   xcodebuild \
     -project "$PROJECT" \
-    -target "$TARGET" \
+    -scheme Cinemacore \
     -configuration Release \
-    -sdk "$1" \
-    SYMROOT="$2" OBJROOT="$2/obj" \
-    CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+    -destination "$destination" \
+    -derivedDataPath "$path" \
+    "$@" \
     build
 }
-build_xcode iphoneos "$TMP/device"
-build_xcode iphonesimulator "$TMP/sim"
+build_xcode 'generic/platform=iOS' "$TMP/device" \
+  CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY=""
+build_xcode 'generic/platform=iOS Simulator' "$TMP/sim" \
+  CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="-"
 
-DEVICE_APP=$(find "$TMP/device/Release-iphoneos" -maxdepth 1 -name '*.app' | head -1)
-SIM_APP=$(find "$TMP/sim/Release-iphonesimulator" -maxdepth 1 -name '*.app' | head -1)
-test -n "$DEVICE_APP" || { echo "ios-build: no device .app under $TMP" >&2; exit 1; }
-test -n "$SIM_APP" || { echo "ios-build: no simulator .app under $TMP" >&2; exit 1; }
+DEVICE_APP=$(find "$TMP/device/Build/Products" -maxdepth 2 -name '*.app' -print -quit)
+SIM_APP=$(find "$TMP/sim/Build/Products" -maxdepth 2 -name '*.app' -print -quit)
+test -n "$DEVICE_APP" || { echo "ios-build: no device .app under $TMP/device" >&2; exit 1; }
+test -n "$SIM_APP" || { echo "ios-build: no simulator .app under $TMP/sim" >&2; exit 1; }
 
 mkdir -p "$TMP/Payload"
 cp -R "$DEVICE_APP" "$TMP/Payload/"
@@ -86,11 +84,19 @@ expected = {
     "CFBundleVersion": build,
     "AppCommit": commit,
     "CFBundleShortVersionString": marketing,
+    "CFBundleIdentifier": "com.cinemacore.app",
 }
 for key, want in expected.items():
     got = plist.get(key)
     if str(got) != want:
         sys.exit(f"{key}={got!r}, expected {want!r} in {path}")
+# A CFBundleExecutable that Xcode did not inject would leave a .app that cannot launch.
+import os
+exe = plist.get("CFBundleExecutable")
+if not exe:
+    sys.exit(f"CFBundleExecutable missing in {path}")
+if not os.path.isfile(os.path.join(os.path.dirname(path), exe)):
+    sys.exit(f"CFBundleExecutable {exe!r} has no binary in {os.path.dirname(path)}")
 PY
 }
 check_plist "$DEVICE_APP/Info.plist"

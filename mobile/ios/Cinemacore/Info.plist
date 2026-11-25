@@ -4,6 +4,9 @@
 <dict>
 	<key>CFBundleDisplayName</key>
 	<string>Cinemacore</string>
+	<!-- Copied to the .app root by the project's Copy Root Resources phase. -->
+	<key>CFBundleIconFile</key>
+	<string>AppIcon</string>
 	<!-- Concrete dev fallbacks: xtool does not expand $(BUILD_SETTINGS). CI
 	     regenerates Generated/Info.plist plus Version.xcconfig from the tag. -->
 	<key>CFBundleShortVersionString</key>

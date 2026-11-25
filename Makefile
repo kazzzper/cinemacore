@@ -28,6 +28,7 @@ help:
 	  '  make ios-xtool ARGS="..."    xtool build with the real version embedded' \
 	  '  make ios-ipa ARGS="..."      unsigned device .ipa via xtool -> release/' \
 	  '  make ios-xcode               unsigned simulator build via xcodebuild' \
+	  '  make ios-test                iOS unit tests on a simulator' \
 	  '  make ios-release             exact CI pipeline: unsigned .ipa + simulator .app.zip' \
 	  '' \
 	  'Android' \
@@ -84,19 +85,21 @@ ios-ipa:
 	mkdir -p $(RELEASE_DIR) && \
 	cp $(IOS)/xtool/Cinemacore.ipa $(RELEASE_DIR)/Cinemacore-$$APP_TAG-unsigned.ipa
 
-ios-xcode: version
-	cd $(IOS) && xtool dev generate-xcode-project
+# Committed project, Xcode only. Ad-hoc signing for the simulator: an unsigned
+# arm64 simulator app is not launchable.
+ios-xcode:
 	cd $(IOS) && xcodebuild \
 	  -project Cinemacore.xcodeproj \
 	  -scheme $${IOS_SCHEME:-Cinemacore} \
 	  -configuration Release \
-	  -sdk iphonesimulator \
 	  -destination 'generic/platform=iOS Simulator' \
-	  -xcconfig Generated/Version.xcconfig \
-	  INFOPLIST_FILE=Generated/Info.plist \
-	  GENERATE_INFOPLIST_FILE=NO INFOPLIST_EXPAND_BUILD_SETTINGS=YES \
-	  CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+	  -derivedDataPath .build/DerivedData \
+	  CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="-" \
 	  build
+
+# The same unit tests CI runs, on a simulator.
+ios-test:
+	./scripts/ios-test
 
 ios-release:
 	./scripts/ios-build

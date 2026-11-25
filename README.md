@@ -64,7 +64,7 @@ The gateway serves MovieBox by default. `CINEMACORE_PROVIDER` selects the source
 | Surface | State | Verified by |
 |---|---|---|
 | `core/` + `server/` | Builds, tests green. Live catalog works. | `go build ./... && go test ./...` |
-| `mobile/ios/` | Builds to `Cinemacore.app`. 5 tabs, AVPlayer, PiP, downloads. | `swift test` (411 tests) + `xtool dev build` |
+| `mobile/ios/` | Builds to `Cinemacore.app`. 5 tabs, AVPlayer, PiP, downloads. | `make ios-test` (simulator) + `make ios-xcode` |
 | `mobile/android/` | Direct MovieBox source, Media3 player, downloads. Verified on a physical Samsung SM-G960F. | `./gradlew :app:assembleDebug` + `:app:testDebugUnitTest` |
 | `tools/tui/` | Placeholder | — |
 

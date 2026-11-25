@@ -47,7 +47,7 @@
       "harness": "freebuff",
       "model": null,
       "startedAt": "2026-10-23T08:02:59.263Z",
-      "lastSeen": "2026-11-25T14:52:25.602Z"
+      "lastSeen": "2026-11-25T19:17:00.166Z"
     },
     {
       "id": "dsh-bugfix",
@@ -473,6 +473,17 @@
       "deps": [],
       "acceptance": "VERSION is source of truth; app versions embedded from tags; unsigned iOS artifacts on tag; docs and dry-run",
       "updatedAt": "2026-11-25T15:34:04.346Z",
+      "links": []
+    },
+    {
+      "id": "T-037",
+      "title": "iOS release builds with the checked-in Xcode project, no xtool on the runner",
+      "status": "review",
+      "module": "ios",
+      "owner": "buffy",
+      "deps": [],
+      "acceptance": "release.yml ios job uses xcodebuild only; unsigned device .ipa; ad-hoc simulator app; unit tests on an iOS Simulator",
+      "updatedAt": "2026-11-25T19:17:07.902Z",
       "links": []
     }
   ]

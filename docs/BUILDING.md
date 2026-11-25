@@ -46,21 +46,25 @@ with the artifact on every build without extra flags.
 ## iOS release
 
 ```bash
-make version               # Generated/Version.xcconfig + Generated/Info.plist
-make ios-xcode             # optional: generated Xcode project, simulator build
+make ios-xcode             # simulator build of the committed Xcode project
+make ios-test              # iOS unit tests on a simulator
 make ios-release           # exact CI pipeline: unsigned .ipa + simulator .app.zip
 ```
 
 `make ios-release` calls `scripts/ios-build`, the same script the tag workflow
-runs. It generates the Xcode project with xtool, then builds the device and
-simulator app with `xcodebuild` only (macOS required). It verifies
-`AppFullVersion`, `CFBundleVersion`, `AppCommit` and
-`CFBundleShortVersionString` inside the outputs and write
+runs. The app target is committed at
+`mobile/ios/Cinemacore/Cinemacore.xcodeproj`, so the script is pure
+`xcodebuild`: no xtool, no project generation. It builds the device and
+simulator app, writes the concrete version into the target's `Info.plist` for
+the lifetime of the build, verifies `AppFullVersion`, `CFBundleVersion`,
+`AppCommit` and `CFBundleShortVersionString` inside the outputs, and writes
 `release/Cinemacore-v<version>-unsigned.ipa` and
-`release/Cinemacore-v<version>-simulator.app.zip`. There is no signing and no
-Apple account. See [`IOS-CI.md`](IOS-CI.md) for sideloading.
+`release/Cinemacore-v<version>-simulator.app.zip`. The device app is unsigned;
+the simulator app is ad-hoc signed so an arm64 Mac can launch it. There is no
+Apple account involved. See [`IOS-CI.md`](IOS-CI.md) for sideloading.
 
-The generated `.xcodeproj` and `Generated/` are gitignored.
+`Generated/` (from `make version`) is only used by the Android/web paths and by
+`scripts/xtool`; the Xcode build does not read it.
 
 ## Android
 
@@ -90,6 +94,6 @@ There is no web app yet. Future web build systems must inject
 | Build path | Version source |
 |---|---|
 | `make ios-xtool` / `scripts/xtool` | concrete plist generated from `VERSION` |
-| `make ios-xcode` / `make ios-release` / CI | `Generated/Version.xcconfig` |
+| `make ios-xcode` / `make ios-release` / CI | concrete plist written from `VERSION` into the app target's `Info.plist` |
 | `make android` / `make android-release` / `dev-android` / CI | `APP_*` env into Gradle + `BuildConfig` |
 | raw local build without make/wrapper | `0.0.0-dev`, build `0`/`1`, `local` |

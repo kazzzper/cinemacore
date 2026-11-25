@@ -65,28 +65,29 @@ jobs:
 
   ios:
     needs: verify
-    # Xcode 27 is the current GA Xcode runner; the repo needs Swift 6.4 / SDK 27.
+    # Xcode 27 image: macOS 27, Xcode 27.1 by default, Swift 6.4, iOS 27 SDK.
+    # arm64 only. Apple tooling only: no xtool, no brew installs.
     runs-on: xcode-27
+    env:
+      # Keep Xcode's output line-buffered so a failed step shows its last lines.
+      NSUnbufferedIO: YES
     steps:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-      - name: Swift tests
-        working-directory: mobile/ios/CinemacoreCore
-        run: swift test
-      - name: Install xtool
-        run: brew install xtool-org/tap/xtool
+      - name: Toolchain
+        run: |
+          xcodebuild -version
+          xcrun --find swift
+          swift --version
+          xcodebuild -showsdks | grep -E 'iOS|Simulator' | head -5
+      # Tests on iOS, not on the macOS host: one toolchain, one SDK, the same
+      # `#if canImport(Darwin)` / `#if os(iOS)` paths the artifact ships.
+      - name: iOS unit tests
+        run: ./scripts/ios-test
       # Same script as `make ios-release`; it verifies the embedded identity.
       - name: Build unsigned iOS artifacts
         run: ./scripts/ios-build
-      - name: Check release output
-        run: |
-          if [ -z "$(ls -A release 2>/dev/null)" ]; then
-            echo "::error title=release directory empty::$(pwd) has $(ls -la | tr '\n' ' ')"
-            find . -maxdepth 4 \( -name '*.ipa' -o -name '*.app' \) -print
-            exit 1
-          fi
-          ls -lh release
       - uses: actions/upload-artifact@v7
         with:
           name: ios

@@ -264,3 +264,6 @@ iOS
 - 2026-11-25T15:34:04.297Z — updated T-036: VERSION baseline, shared version scripts, make targets, iOS/Android embedding and settings rows, unsigned xcodebuild tag release, docs, dry-run verified
 - 2026-11-25T15:34:04.347Z — done T-036
 - 2026-11-25T16:01:57.000Z — T-036 follow-up: make build stamps VERSION; artifacts now go to gitignored release/; added make tag, dev-ios, dev-android, android-release (debug-signed fallback verified, versionCode 131/0.0.1-beta.1); tagged v0.0.1-beta.1 at 1560e4b (not pushed)
+- 2026-11-25T19:17:00.167Z — registered (freebuff)
+- 2026-11-25T19:17:07.852Z — claimed T-037 — iOS release builds with the checked-in Xcode project, no xtool on the runner
+- 2026-11-25T19:17:07.903Z — updated T-037 -> review: checked-in Cinemacore.xcodeproj + shared scheme; scripts/ios-build is xcodebuild-only (unsigned device IPA, ad-hoc simulator app); scripts/ios-test runs CinemacoreCore tests on an iOS Simulator; release.yml drops xtool. Not yet run on a mac: waiting on a tag.
