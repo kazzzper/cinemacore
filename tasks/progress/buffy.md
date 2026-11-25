@@ -259,3 +259,7 @@ iOS
 - 2026-10-25T08:12:56.516Z — claimed T-027 — Landscape must play, and a DASH rung must never blank a quality pick
 - 2026-10-25T08:12:56.611Z — updated T-027: player takes the wide layout when the phone turns; mask no longer forbids portrait; DASH rungs dropped for AVPlayer; streamhype 401 health fixed
 - 2026-10-25T08:12:56.687Z — done T-027
+- 2026-11-25T14:52:25.603Z — registered (freebuff)
+- 2026-11-25T15:34:04.254Z — claimed T-036 — Release tracking, version embedding and tag CI
+- 2026-11-25T15:34:04.297Z — updated T-036: VERSION baseline, shared version scripts, make targets, iOS/Android embedding and settings rows, unsigned xcodebuild tag release, docs, dry-run verified
+- 2026-11-25T15:34:04.347Z — done T-036

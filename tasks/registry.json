@@ -47,7 +47,7 @@
       "harness": "freebuff",
       "model": null,
       "startedAt": "2026-10-23T08:02:59.263Z",
-      "lastSeen": "2026-10-23T08:02:59.264Z"
+      "lastSeen": "2026-11-25T14:52:25.602Z"
     },
     {
       "id": "dsh-bugfix",
@@ -462,6 +462,17 @@
       "deps": [],
       "acceptance": "PlayerViewModel.load checks the queue before repository.play; compileDebugKotlin green",
       "updatedAt": "2026-11-14T09:33:32.432Z",
+      "links": []
+    },
+    {
+      "id": "T-036",
+      "title": "Release tracking, version embedding and tag CI",
+      "status": "done",
+      "module": "release",
+      "owner": "buffy",
+      "deps": [],
+      "acceptance": "VERSION is source of truth; app versions embedded from tags; unsigned iOS artifacts on tag; docs and dry-run",
+      "updatedAt": "2026-11-25T15:34:04.346Z",
       "links": []
     }
   ]
