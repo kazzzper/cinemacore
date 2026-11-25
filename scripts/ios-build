@@ -6,7 +6,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 IOS="$ROOT/mobile/ios/Cinemacore"
-SCHEME="${IOS_SCHEME:-Cinemacore}"
+SCHEME="${IOS_SCHEME:-}"
 TMP="${RUNNER_TEMP:-$(mktemp -d)}"
 
 if ! command -v xcodebuild >/dev/null 2>&1; then
@@ -23,13 +23,21 @@ cd "$ROOT"
 node scripts/generate-version
 cd "$IOS"
 
-if [ ! -d Cinemacore.xcodeproj ]; then
-  xtool dev generate-xcode-project
+# xtool emits a workspace wrapping a project in xtool/.xtool-tmp; it never
+# writes Cinemacore.xcodeproj next to the package, which is why CI used to fail.
+xtool dev generate-xcode-project
+WORKSPACE="$IOS/xtool/Cinemacore.xcworkspace"
+if [ -z "$SCHEME" ]; then
+  SCHEME=$(xcodebuild -list -json -workspace "$WORKSPACE" | python3 -c '
+import json, sys
+schemes = json.load(sys.stdin)["workspace"]["schemes"]
+print(next(s for s in schemes if "Cinemacore" in s))
+')
 fi
-xcodebuild -list -project Cinemacore.xcodeproj
+xcodebuild -list -workspace "$WORKSPACE"
 
 xcodebuild \
-  -project Cinemacore.xcodeproj \
+  -workspace "$WORKSPACE" \
   -scheme "$SCHEME" \
   -configuration Release \
   -sdk iphoneos \
@@ -41,7 +49,7 @@ xcodebuild \
   build
 
 xcodebuild \
-  -project Cinemacore.xcodeproj \
+  -workspace "$WORKSPACE" \
   -scheme "$SCHEME" \
   -configuration Release \
   -sdk iphonesimulator \
