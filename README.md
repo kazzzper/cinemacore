@@ -71,6 +71,24 @@ The gateway serves MovieBox by default. `CINEMACORE_PROVIDER` selects the source
 The iOS app has not run on a device yet. Android has: the built-in direct source, home feed, detail,
 seasons, episodes and HEVC playback are verified on a Samsung SM-G960F.
 
+## Versions
+
+`VERSION` is the single source of truth; tags are `v<version>` and GitHub
+Releases are built from them. The current baseline is `v0.0.1-beta.1`. Release
+tags are immutable; `stable` and `beta` are the only moving tags.
+
+```bash
+git fetch --tags --force
+git checkout v0.0.1-beta.1   # exact
+# git checkout stable        # newest stable
+```
+
+`make ios-xtool`, `make ios-release` and `make android` embed the tag, build and
+commit; raw local builds fall back to `v0.0.0-dev (…) local`. CI uses the same
+scripts for iOS, Android and any future `web/` build. See
+[`RELEASING.md`](RELEASING.md), [`docs/BUILDING.md`](docs/BUILDING.md) and
+[`docs/IOS-CI.md`](docs/IOS-CI.md).
+
 ## Architecture
 
 ```
@@ -115,6 +133,9 @@ on the host. See `docs/adr/0004`.
 - [`AGENTS.md`](AGENTS.md) — operating contract for all agents and harnesses.
 - [`ANDROID.md`](ANDROID.md) — Android toolchain setup (JDK 17, Android CLI, SDK 37).
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — architecture and design direction.
+- [`docs/BUILDING.md`](docs/BUILDING.md) — make targets for iOS (xtool/Xcode) and Android.
+- [`RELEASING.md`](RELEASING.md) — versions, channels, pinning and hotfixes.
+- [`docs/IOS-CI.md`](docs/IOS-CI.md) — unsigned iOS CI and the sideload notes.
 - [`docs/adr/`](docs/adr/) — architecture decision records.
 - [`mobile/ios/README.md`](mobile/ios/README.md) — iOS source of truth.
 - [`mobile/android/README.md`](mobile/android/README.md) — Android source of truth.

@@ -12,11 +12,14 @@ Rules live in [`rules/`](rules/README.md). Work is tracked in [`tasks/`](tasks/R
 | `mobile/ios/` | iOS app | Swift 6.4 · SwiftUI · SwiftData · swift-nio |
 | `mobile/android/` | Android app | Kotlin · Compose · Retrofit · Room |
 | `tools/tui/` | Terminal client | Rust |
+| `web/` | **Future web surface** — every web app lives here, never at the root | TBD |
 | `contracts/openapi.yaml` | **Single source of truth** for the wire API | OpenAPI 3.1 |
 | `rules/` | Coding + process rules (follow these) | Markdown |
 | `tasks/` | Board, registry, harness-agnostic CLI | Node |
 
 **Prime directive:** provider / signing / cache / download / history logic exists **once**, in `core/`. Surfaces are thin. `core/` imports nothing from `server/`, `mobile/`, or `tools/`.
+
+**Web placement:** create every web front end under `web/`. Do not add root-level HTML/JS bundles or a second web root. Web builds must read `VERSION` through `scripts/version --env` and inject `__APP_VERSION__`, `__BUILD_NUMBER__`, `__APP_COMMIT__` — never a hardcoded release number.
 
 ## 1. Bootstrap (run these)
 
@@ -25,11 +28,16 @@ Rules live in [`rules/`](rules/README.md). Work is tracked in [`tasks/`](tasks/R
 go build ./... && go test ./... -race
 go run ./cmd/cinemacore                      # :8080; override with CINEMACORE_ADDR=:8971
 
-# iOS app (Swift 6.4 + xtool; no simulator on Linux -> device only)
-cd mobile/ios/Cinemacore && xtool dev build
+# Every surface through make (see docs/BUILDING.md)
+make help
+make version                                 # VERSION -> iOS Generated/*
+make ios-xtool ARGS="--configuration release --ipa"
+make ios-xcode                               # unsigned simulator build
+make ios-release                             # exact CI: unsigned .ipa + simulator zip
+make android
 
-# Android app (JDK 17 + Android CLI; one-time setup in ANDROID.md)
-cd mobile/android && ./gradlew assembleDebug
+# Raw iOS build: use the wrapper, not raw xtool, or the version is dev fallback
+scripts/xtool dev build
 
 # Work tracking (any harness)
 node tasks/bin/tasks.mjs status
@@ -38,7 +46,7 @@ node tasks/bin/tasks.mjs status
 git config core.hooksPath .githooks
 ```
 
-Missing toolchain? `go` ✅ · `swift` ✅ (6.4.1) · `xtool` ✅. Android setup (JDK 17, Android CLI, SDK) is in [`ANDROID.md`](ANDROID.md).
+Missing toolchain? `go` ✅ · `swift` ✅ (6.4.1) · `xtool` ✅. Android setup (JDK 17, Android CLI, SDK) is in [`ANDROID.md`](ANDROID.md). Build recipes live in [`docs/BUILDING.md`](docs/BUILDING.md); releases in [`RELEASING.md`](RELEASING.md).
 
 ## 2. Agent + harness workflow (required)
 
@@ -98,6 +106,7 @@ preserved; shorter never means fewer cases handled.
 - Never write narration comments — comment the *why* (`rules/08-comments.md`).
 - Never bypass the `commit-msg` hook with `--no-verify`.
 - Never commit secrets, tokens, or `release-key.jks`.
-- Never edit generated code (`*.gen.go`, generated clients) by hand.
+- Never edit generated code (`*.gen.go`, generated clients, `mobile/ios/Cinemacore/Generated/`) by hand.
+- Never hardcode an app version; inject it from `VERSION`/the tag (see `RELEASING.md`).
 - Never weaken the signing contract; `core/sign` is versioned and frozen.
 - Keep the reverse-engineered signing constant isolated in `core/sign` only.
