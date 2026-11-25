@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 import CinemacoreCore
 
 /// Settings, including the data-source switch.
@@ -6,7 +7,9 @@ struct SettingsScreen: View {
     let app: AppModel
 
     @State private var gatewayDraft = ""
+    @State private var copiedVersion = false
     @Environment(\.theme) private var theme
+    private let version = AppVersion()
 
     private var sourceBinding: Binding<CatalogResolver.SourceMode> {
         Binding(
@@ -120,7 +123,15 @@ struct SettingsScreen: View {
                     NavigationLink(value: Route.lab) {
                         Label("Lab", systemImage: "wrench.and.screwdriver")
                     }
-                    LabeledContent("Version", value: "0.1.0")
+                    Button {
+                        UIPasteboard.general.string = version.display
+                        copiedVersion = true
+                    } label: {
+                        LabeledContent(copiedVersion ? "Copied" : "Version", value: version.display)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Copy version")
                 }
 
                 Section("Diagnostics") {

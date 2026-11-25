@@ -4,10 +4,16 @@
 <dict>
 	<key>CFBundleDisplayName</key>
 	<string>Cinemacore</string>
+	<!-- Concrete dev fallbacks: xtool does not expand $(BUILD_SETTINGS). CI
+	     regenerates Generated/Info.plist plus Version.xcconfig from the tag. -->
 	<key>CFBundleShortVersionString</key>
-	<string>0.1.0</string>
+	<string>0.0.0</string>
 	<key>CFBundleVersion</key>
-	<string>1</string>
+	<string>0</string>
+	<key>AppFullVersion</key>
+	<string>0.0.0-dev</string>
+	<key>AppCommit</key>
+	<string>local</string>
 
 	<!-- TMDB v3 API key for the StreamHype catalog source (Settings › Data
 	     source). Leave this empty to use StreamHype's published client key;

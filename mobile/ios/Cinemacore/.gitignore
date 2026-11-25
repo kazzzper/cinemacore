@@ -8,3 +8,6 @@ DerivedData/
 .netrc
 
 /xtool
+
+# Generated release metadata (scripts/generate-version)
+/Generated/
