@@ -1,5 +1,8 @@
 package com.cinemacore.app.ui.settings
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -48,6 +51,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.input.ImeAction
@@ -84,6 +88,8 @@ fun SettingsScreen(
     modifier: Modifier = Modifier,
 ) {
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+    val versionLabel = "v${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE}) ${BuildConfig.GIT_COMMIT}"
     var actionFailed by remember { mutableStateOf(false) }
     var switchingSource by remember { mutableStateOf(false) }
     var applyingGateway by remember { mutableStateOf(false) }
@@ -444,6 +450,20 @@ fun SettingsScreen(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
+                        .clickable {
+                            val clipboard = context.getSystemService(ClipboardManager::class.java)
+                            clipboard?.setPrimaryClip(
+                                ClipData.newPlainText(
+                                    context.getString(R.string.settings_about_version),
+                                    versionLabel,
+                                ),
+                            )
+                            Toast.makeText(
+                                context,
+                                context.getString(R.string.settings_about_version_copied),
+                                Toast.LENGTH_SHORT,
+                            ).show()
+                        }
                         .padding(CinemaSpacing.x4),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
@@ -454,7 +474,7 @@ fun SettingsScreen(
                         modifier = Modifier.weight(1f),
                     )
                     Text(
-                        text = BuildConfig.VERSION_NAME,
+                        text = versionLabel,
                         style = MaterialTheme.typography.bodyMedium,
                         color = CinemaColors.TextSecondary,
                     )

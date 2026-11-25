@@ -12,8 +12,14 @@ android {
         applicationId = "com.cinemacore.app"
         minSdk = 24
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.1.0"
+        // CI sets these from the tag in one shared step. Local builds stay on
+        // the dev fallback; the app never hardcodes a release number.
+        val appVersionName = System.getenv("APP_FULL_VERSION") ?: "0.0.0-dev"
+        val appVersionCode = System.getenv("APP_BUILD_NUMBER")?.toIntOrNull() ?: 1
+        val appCommit = System.getenv("APP_COMMIT") ?: "local"
+        versionCode = appVersionCode
+        versionName = appVersionName
+        buildConfigField("String", "GIT_COMMIT", "\"$appCommit\"")
 
         buildConfigField("String", "DEFAULT_GATEWAY", "\"http://10.0.2.2:8080\"")
         buildConfigField(

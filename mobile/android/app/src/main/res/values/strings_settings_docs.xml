@@ -76,6 +76,7 @@
     <string name="feature_tracking_reset_title">Reset feature tracking?</string>
     <string name="feature_tracking_reset_message">Usage counts and every enabled/disabled override are cleared. This cannot be undone.</string>
     <string name="settings_about_version">Version</string>
+    <string name="settings_about_version_copied">Version copied</string>
 
     <!-- Docs -->
     <string name="docs_title">Docs</string>
