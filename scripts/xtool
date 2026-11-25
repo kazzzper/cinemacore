@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+# Run xtool with the real version in Info.plist for the life of the build.
+# xtool does not expand $(BUILD_SETTINGS); the committed plist is the dev
+# fallback, so the wrapper swaps in a concrete copy and always restores it.
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+IOS="$ROOT/mobile/ios/Cinemacore"
+PLIST="$IOS/Info.plist"
+BACKUP="$(mktemp)"
+CONCRETE="$(mktemp)"
+
+cleanup() {
+  cp "$BACKUP" "$PLIST"
+  rm -f "$BACKUP" "$CONCRETE"
+}
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+cp "$PLIST" "$BACKUP"
+node "$ROOT/scripts/generate-version" --concrete "$CONCRETE"
+cp "$CONCRETE" "$PLIST"
+
+cd "$IOS"
+xtool "$@"

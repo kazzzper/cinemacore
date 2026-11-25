@@ -1,0 +1,143 @@
+#!/usr/bin/env node
+// Cut a release locally. Never pushes: the exact push commands are printed so a
+// human decides when the tag leaves the machine.
+const fs = require('node:fs');
+const path = require('node:path');
+const { execFileSync } = require('node:child_process');
+const {
+  ROOT,
+  VERSION_FILE,
+  derive,
+  parseVersion,
+  formatVersion,
+  nextVersion,
+  buildNumber,
+} = require('./lib/version.cjs');
+
+const args = process.argv.slice(2);
+const dryRun = args.includes('--dry-run');
+const channelIndex = args.indexOf('--channel');
+const channel = channelIndex === -1 ? 'stable' : args[channelIndex + 1];
+const bump = args.find((arg, index) =>
+  !arg.startsWith('--') && (channelIndex === -1 || index !== channelIndex + 1));
+
+function fail(message) {
+  console.error(`release: ${message}`);
+  process.exit(1);
+}
+
+function git(gitArgs) {
+  return execFileSync('git', gitArgs, {
+    cwd: ROOT,
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'inherit'],
+  }).trim();
+}
+
+function gitQuiet(gitArgs) {
+  return execFileSync('git', gitArgs, {
+    cwd: ROOT,
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'ignore'],
+  }).trim();
+}
+
+if (!['patch', 'minor', 'major'].includes(bump)) {
+  fail('usage: scripts/release <patch|minor|major> --channel <alpha|beta|rc|stable> [--dry-run]');
+}
+if (!['alpha', 'beta', 'rc', 'stable'].includes(channel)) {
+  fail('--channel must be alpha, beta, rc or stable');
+}
+
+try {
+  const branch = git(['rev-parse', '--abbrev-ref', 'HEAD']);
+  if (branch !== 'main') {
+    if (!dryRun) fail(`releases run from main, not ${branch}`);
+    console.warn(`release: dry-run on ${branch}; the real run requires main`);
+  }
+
+  const dirty = git(['status', '--porcelain', '--untracked-files=no']);
+  if (dirty && !dryRun) fail(`tracked changes present:\n${dirty}`);
+  if (dirty) console.warn('release: dry-run with tracked changes present');
+
+  const untracked = git(['status', '--porcelain', '--untracked-files=normal'])
+    .split('\n')
+    .filter((line) => line.startsWith('??'));
+  if (untracked.length > 0) {
+    console.warn(`release: ignoring ${untracked.length} untracked path(s)`);
+  }
+
+  const current = parseVersion(fs.readFileSync(VERSION_FILE, 'utf8').trim());
+  const next = nextVersion(current, bump, channel);
+  const full = formatVersion(next);
+  const tag = `v${full}`;
+  const build = buildNumber(next);
+
+  try {
+    git(['rev-parse', '--quiet', '--verify', `refs/tags/${tag}`]);
+    fail(`tag ${tag} already exists`);
+  } catch (error) {
+    if (error.status === 1) {
+      // Expected: the tag does not exist.
+    } else {
+      throw error;
+    }
+  }
+
+  const range = (() => {
+    try {
+      return gitQuiet(['describe', '--tags', '--abbrev=0', '--match', 'v*']);
+    } catch {
+      return '';
+    }
+  })();
+
+  const changelog = execFileSync(
+    process.execPath,
+    [path.join(ROOT, 'scripts', 'changelog'), '--version', full, ...(range ? ['--range', range] : [])],
+    { cwd: ROOT, encoding: 'utf8' },
+  );
+
+  if (dryRun) {
+    console.log(`Would release ${tag}`);
+    console.log(`  from      ${formatVersion(current)}`);
+    console.log(`  version   ${full}`);
+    console.log(`  marketing ${next.major}.${next.minor}.${next.patch}`);
+    console.log(`  build     ${build}`);
+    console.log(`  commit    ${derive().commit}`);
+    console.log(`  range     ${range || 'entire history'}`);
+    console.log('');
+    console.log('Would write: VERSION, CHANGELOG.md, mobile/ios/Cinemacore/Generated/*');
+    console.log(`Would commit: chore(release): ${tag}`);
+    console.log(`Would tag:    ${tag} (annotated)`);
+    console.log('');
+    console.log('Changelog preview:');
+    console.log(changelog.split('\n').slice(0, 24).join('\n'));
+    console.log('');
+    console.log('No files, commits or tags were changed.');
+    process.exit(0);
+  }
+
+  fs.writeFileSync(VERSION_FILE, `${full}\n`);
+  execFileSync(process.execPath, [path.join(ROOT, 'scripts', 'generate-version')], {
+    cwd: ROOT,
+    stdio: 'inherit',
+  });
+
+  const changelogPath = path.join(ROOT, 'CHANGELOG.md');
+  const previous = fs.existsSync(changelogPath)
+    ? fs.readFileSync(changelogPath, 'utf8').replace(/^# Changelog\s*/, '')
+    : '';
+  fs.writeFileSync(changelogPath, `# Changelog\n\n${changelog}${previous.trimStart()}`);
+
+  git(['add', 'VERSION', 'CHANGELOG.md']);
+  git(['commit', '-m', `chore(release): ${tag}`]);
+  git(['tag', '-a', tag, '-m', tag]);
+
+  console.log(`Released ${tag} locally.`);
+  console.log('Push when ready:');
+  console.log('  git push origin main');
+  console.log(`  git push origin ${tag}`);
+} catch (error) {
+  fail(error.message);
+}

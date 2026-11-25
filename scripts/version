@@ -1,0 +1,50 @@
+#!/usr/bin/env node
+// Print the release identity used by every platform. CI appends --env output to
+// $GITHUB_ENV so one step feeds Android, iOS, web and the artifact checks.
+const {
+  derive,
+  tagFromArgs,
+  marketingVersion,
+} = require('./lib/version.cjs');
+
+const args = process.argv.slice(2);
+const json = args.includes('--json');
+const env = args.includes('--env');
+const check = args.includes('--check');
+
+try {
+  const info = derive({ tag: tagFromArgs(args) });
+
+  if (check) {
+    if (process.argv.includes('--tag') || process.env.GITHUB_REF_TYPE === 'tag') {
+      console.log(`VERSION ${info.tag} matches the tag`);
+    } else {
+      console.log(`VERSION ${info.full} is valid (build ${info.build})`);
+    }
+  } else if (json) {
+    console.log(JSON.stringify({
+      version: info.full,
+      tag: info.tag,
+      marketing: marketingVersion(info.version),
+      build: info.build,
+      commit: info.commit,
+    }, null, 2));
+  } else if (env) {
+    // GITHUB_ENV is a plain KEY=VALUE file, not a shell script.
+    console.log(`APP_VERSION=${info.full}`);
+    console.log(`APP_FULL_VERSION=${info.full}`);
+    console.log(`MARKETING_VERSION=${info.marketing}`);
+    console.log(`APP_BUILD_NUMBER=${info.build}`);
+    console.log(`APP_COMMIT=${info.commit}`);
+    console.log(`APP_TAG=${info.tag}`);
+  } else {
+    console.log(`version   ${info.full}`);
+    console.log(`tag       ${info.tag}`);
+    console.log(`marketing ${info.marketing}`);
+    console.log(`build     ${info.build}`);
+    console.log(`commit    ${info.commit}`);
+  }
+} catch (error) {
+  console.error(`version: ${error.message}`);
+  process.exit(1);
+}

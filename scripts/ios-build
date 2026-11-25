@@ -1,0 +1,79 @@
+#!/usr/bin/env bash
+# The one unsigned iOS pipeline: generate the project and version inputs, build
+# device + simulator with signing off, verify the embedded identity, package.
+# CI (.github/workflows/release.yml) and `make ios-release` both call this.
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+IOS="$ROOT/mobile/ios/Cinemacore"
+SCHEME="${IOS_SCHEME:-Cinemacore}"
+TMP="${RUNNER_TEMP:-$(mktemp -d)}"
+
+if ! command -v xcodebuild >/dev/null 2>&1; then
+  echo "ios-build: xcodebuild is required (macOS only)" >&2
+  exit 1
+fi
+
+set -a
+# shellcheck disable=SC1090
+source <(node "$ROOT/scripts/version" --env)
+set +a
+
+cd "$ROOT"
+node scripts/generate-version
+cd "$IOS"
+
+if [ ! -d Cinemacore.xcodeproj ]; then
+  xtool dev generate-xcode-project
+fi
+xcodebuild -list -project Cinemacore.xcodeproj
+
+xcodebuild \
+  -project Cinemacore.xcodeproj \
+  -scheme "$SCHEME" \
+  -configuration Release \
+  -sdk iphoneos \
+  -derivedDataPath "$TMP/dd-device" \
+  -xcconfig Generated/Version.xcconfig \
+  INFOPLIST_FILE=Generated/Info.plist \
+  GENERATE_INFOPLIST_FILE=NO INFOPLIST_EXPAND_BUILD_SETTINGS=YES \
+  CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+  build
+
+xcodebuild \
+  -project Cinemacore.xcodeproj \
+  -scheme "$SCHEME" \
+  -configuration Release \
+  -sdk iphonesimulator \
+  -destination "generic/platform=iOS Simulator" \
+  -derivedDataPath "$TMP/dd-sim" \
+  -xcconfig Generated/Version.xcconfig \
+  INFOPLIST_FILE=Generated/Info.plist \
+  GENERATE_INFOPLIST_FILE=NO INFOPLIST_EXPAND_BUILD_SETTINGS=YES \
+  CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+  build
+
+DEVICE_APP=$(find "$TMP/dd-device/Build/Products/Release-iphoneos" -maxdepth 1 -name '*.app' | head -1)
+SIM_APP=$(find "$TMP/dd-sim/Build/Products/Release-iphonesimulator" -maxdepth 1 -name '*.app' | head -1)
+test -n "$DEVICE_APP"
+test -n "$SIM_APP"
+
+check() {
+  /usr/libexec/PlistBuddy -c 'Print :AppFullVersion' "$1/Info.plist" | grep -Fxq "$APP_FULL_VERSION"
+  /usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$1/Info.plist" | grep -Fxq "$APP_BUILD_NUMBER"
+  /usr/libexec/PlistBuddy -c 'Print :AppCommit' "$1/Info.plist" | grep -Fxq "$APP_COMMIT"
+  /usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$1/Info.plist" | grep -Fxq "$MARKETING_VERSION"
+}
+check "$DEVICE_APP"
+check "$SIM_APP"
+
+mkdir -p "$TMP/Payload" "$ROOT/dist"
+cp -R "$DEVICE_APP" "$TMP/Payload/"
+(cd "$TMP" && zip -qry "Cinemacore-${APP_TAG}-unsigned.ipa" Payload)
+ditto -c -k --sequesterRsrc --keepParent "$SIM_APP" "Cinemacore-${APP_TAG}-simulator.app.zip"
+mv "$TMP/Cinemacore-${APP_TAG}-unsigned.ipa" "$ROOT/dist/"
+mv "Cinemacore-${APP_TAG}-simulator.app.zip" "$ROOT/dist/"
+
+echo "ios-build: ${APP_FULL_VERSION} (${APP_BUILD_NUMBER}) ${APP_COMMIT}"
+echo "  dist/Cinemacore-${APP_TAG}-unsigned.ipa"
+echo "  dist/Cinemacore-${APP_TAG}-simulator.app.zip"
