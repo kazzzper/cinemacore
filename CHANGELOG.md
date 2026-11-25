@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.0.1-beta.2] - 2026-11-25
+
+### Bug Fixes
+
+- **ios:** build release artifacts with xcodebuild only
+- **release:** mark beta releases as prereleases and stop force-moving channel tags
+
+### Build
+
+- **ci:** test iOS in the release workflow instead of repeating Go checks
+
 ## [0.0.1-beta.1] - 2026-11-25
 
 ### Features
