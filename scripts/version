@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // Print the release identity used by every platform. CI appends --env output to
 // $GITHUB_ENV so one step feeds Android, iOS, web and the artifact checks.
+const fs = require('node:fs');
 const {
   derive,
   tagFromArgs,
@@ -11,6 +12,7 @@ const args = process.argv.slice(2);
 const json = args.includes('--json');
 const env = args.includes('--env');
 const check = args.includes('--check');
+const github = args.includes('--github');
 
 try {
   const info = derive({ tag: tagFromArgs(args) });
@@ -29,14 +31,31 @@ try {
       build: info.build,
       commit: info.commit,
     }, null, 2));
-  } else if (env) {
+  } else if (env || github) {
     // GITHUB_ENV is a plain KEY=VALUE file, not a shell script.
-    console.log(`APP_VERSION=${info.full}`);
-    console.log(`APP_FULL_VERSION=${info.full}`);
-    console.log(`MARKETING_VERSION=${info.marketing}`);
-    console.log(`APP_BUILD_NUMBER=${info.build}`);
-    console.log(`APP_COMMIT=${info.commit}`);
-    console.log(`APP_TAG=${info.tag}`);
+    const lines = [
+      `APP_VERSION=${info.full}`,
+      `APP_FULL_VERSION=${info.full}`,
+      `MARKETING_VERSION=${info.marketing}`,
+      `APP_BUILD_NUMBER=${info.build}`,
+      `APP_COMMIT=${info.commit}`,
+      `APP_TAG=${info.tag}`,
+    ];
+    if (github && process.env.GITHUB_ENV) {
+      fs.appendFileSync(process.env.GITHUB_ENV, `${lines.join('\n')}\n`);
+    } else {
+      console.log(lines.join('\n'));
+    }
+    if (github) {
+      // Values from GITHUB_ENV are only visible to later steps, so anything
+      // consumed in this one has to come from GITHUB_OUTPUT.
+      const prerelease = `prerelease=${info.full.includes('-')}`;
+      if (process.env.GITHUB_OUTPUT) {
+        fs.appendFileSync(process.env.GITHUB_OUTPUT, `${prerelease}\n`);
+      } else {
+        console.log(prerelease);
+      }
+    }
   } else {
     console.log(`version   ${info.full}`);
     console.log(`tag       ${info.tag}`);

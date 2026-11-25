@@ -105,15 +105,7 @@ jobs:
           path: release
       - name: Derive release identity
         id: meta
-        run: |
-          node scripts/version --env >> "$GITHUB_ENV"
-          if [[ "$APP_VERSION" == *-* ]]; then
-            echo "prerelease=true" >> "$GITHUB_OUTPUT"
-            echo "moving=beta" >> "$GITHUB_OUTPUT"
-          else
-            echo "prerelease=false" >> "$GITHUB_OUTPUT"
-            echo "moving=stable" >> "$GITHUB_OUTPUT"
-          fi
+        run: node scripts/version --github
       - name: Extract release notes
         run: |
           node - <<'NODE'
@@ -137,7 +129,3 @@ jobs:
           prerelease: ${{ steps.meta.outputs.prerelease == 'true' }}
           files: release/**/*
           fail_on_unmatched_files: true
-      - name: Move stable or beta tag
-        run: |
-          git tag -fa "${{ steps.meta.outputs.moving }}" -m "$APP_VERSION" "$GITHUB_SHA"
-          git push origin "refs/tags/${{ steps.meta.outputs.moving }}" --force
