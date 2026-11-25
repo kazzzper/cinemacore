@@ -83,10 +83,18 @@ jobs:
       # Same script as `make ios-release`; it verifies the embedded identity.
       - name: Build unsigned iOS artifacts
         run: ./scripts/ios-build
+      - name: Check release output
+        run: |
+          if [ -z "$(ls -A release 2>/dev/null)" ]; then
+            echo "::error title=release directory empty::$(pwd) has $(ls -la | tr '\n' ' ')"
+            find . -maxdepth 4 \( -name '*.ipa' -o -name '*.app' \) -print
+            exit 1
+          fi
+          ls -lh release
       - uses: actions/upload-artifact@v7
         with:
           name: ios
-          path: release/*
+          path: ${{ github.workspace }}/release/
           if-no-files-found: error
 
   publish:
