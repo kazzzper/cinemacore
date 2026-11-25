@@ -52,6 +52,30 @@ android {
         )
     }
 
+    // No keystore ships in the repo. Release builds fall back to the debug key
+    // so they stay installable; CI/local can supply a real key through env.
+    signingConfigs {
+        create("release") {
+            val keystorePath = System.getenv("CINEMACORE_KEYSTORE")
+            if (keystorePath != null) {
+                storeFile = file(keystorePath)
+                storePassword = System.getenv("CINEMACORE_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("CINEMACORE_KEY_ALIAS")
+                keyPassword = System.getenv("CINEMACORE_KEY_PASSWORD")
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            signingConfig = if (System.getenv("CINEMACORE_KEYSTORE") != null) {
+                signingConfigs.getByName("release")
+            } else {
+                signingConfigs.getByName("debug")
+            }
+        }
+    }
+
     testOptions {
         unitTests.isReturnDefaultValues = true
     }

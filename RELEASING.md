@@ -110,7 +110,7 @@ Bump/channel behaviour:
 `.github/workflows/release.yml` runs on `v*` tags and:
 
 1. verifies the tag matches `VERSION`, runs the Go race suite and build;
-2. builds Android (`debug.apk` + unsigned `release.aab`) and verifies
+2. builds Android (`debug.apk` + release `.aab`) and verifies
    `versionName`/`versionCode` inside the APK;
 3. builds iOS on the `xcode-27` runner with signing disabled, verifies
    `AppFullVersion`/`CFBundleVersion`/`AppCommit` inside both apps, and packages
@@ -119,6 +119,11 @@ Bump/channel behaviour:
    attaches every artifact;
 5. force-updates the moving `stable` tag for a stable release, or `beta` for any
    prerelease.
+
+Locally, `make tag` tags the version already in `VERSION`, `make build` produces
+versioned artifacts, and everything lands in the gitignored `release/` folder —
+`make android`, `make android-release`, `make dev-ios`, `make dev-android`,
+`make ios-release`.
 
 There are **no store uploads** and **no signing secrets**. See
 [`docs/IOS-CI.md`](docs/IOS-CI.md) for the iOS pipeline and the future signed

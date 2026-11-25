@@ -61,13 +61,13 @@ jobs:
           test "$NAME" = "$APP_FULL_VERSION" || { echo "versionName $NAME != $APP_FULL_VERSION" >&2; exit 1; }
       - name: Collect
         run: |
-          mkdir -p dist
-          cp mobile/android/app/build/outputs/apk/debug/app-debug.apk "dist/Cinemacore-${APP_TAG}-debug.apk"
-          cp mobile/android/app/build/outputs/bundle/release/app-release.aab "dist/Cinemacore-${APP_TAG}-release.aab"
+          mkdir -p release
+          cp mobile/android/app/build/outputs/apk/debug/app-debug.apk "release/Cinemacore-${APP_TAG}-debug.apk"
+          cp mobile/android/app/build/outputs/bundle/release/app-release.aab "release/Cinemacore-${APP_TAG}-release.aab"
       - uses: actions/upload-artifact@v7
         with:
           name: android
-          path: dist/*
+          path: release/*
           if-no-files-found: error
 
   ios:
@@ -86,7 +86,7 @@ jobs:
       - uses: actions/upload-artifact@v7
         with:
           name: ios
-          path: dist/*
+          path: release/*
           if-no-files-found: error
 
   publish:
@@ -98,7 +98,7 @@ jobs:
           fetch-depth: 0
       - uses: actions/download-artifact@v8
         with:
-          path: dist
+          path: release
       - name: Derive release identity
         id: meta
         run: |
@@ -131,7 +131,7 @@ jobs:
           name: ${{ github.ref_name }}
           body_path: release-notes.md
           prerelease: ${{ steps.meta.outputs.prerelease == 'true' }}
-          files: dist/**/*
+          files: release/**/*
           fail_on_unmatched_files: true
       - name: Move stable or beta tag
         run: |

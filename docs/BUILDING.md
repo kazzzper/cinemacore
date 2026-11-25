@@ -7,9 +7,26 @@ hardcodes a release number. Run `make help` for the short list.
 ```bash
 make help
 make check                 # validate VERSION
-make build                 # Go build + Android debug APK
+make tag                   # tag the current commit with VERSION
+make build                 # versioned Go build + versioned debug APK
 make test                  # Go race, Swift core, Android unit tests
 ```
+
+Every app artifact is written to `release/`, which is gitignored. `make build`
+stamps the version from `VERSION` into the generated iOS inputs and into the
+Android APK, then leaves `release/Cinemacore-v<version>-debug.apk` behind.
+
+## Run on a device
+
+```bash
+make dev-ios ARGS="--usb"  # xtool: build, install and launch on the iPhone
+make dev-android           # gradlew :app:installDebug on the attached device
+```
+
+`dev-ios` goes through `scripts/xtool`, so the on-device app reports the real
+`VERSION` and commit. xtool needs a paired device (and macOS); pass `--udid`,
+`--usb`, `--network` or `--all` through `ARGS`. `dev-android` uses `adb`, so
+the device must be authorised and visible in `adb devices`.
 
 ## iOS with xtool
 
@@ -35,7 +52,7 @@ make ios-release           # exact CI pipeline: unsigned .ipa + simulator .app.z
 `make ios-release` calls `scripts/ios-build`, the same script the tag workflow
 runs. It builds device and simulator with `CODE_SIGNING_ALLOWED=NO`, verifies
 `AppFullVersion`, `CFBundleVersion`, `AppCommit` and `CFBundleShortVersionString`
-inside both apps, and writes `dist/`. It requires macOS and Xcode 27; there is no
+inside both apps, and writes `release/`. It requires macOS and Xcode 27; there is no
 signing and no Apple account. See [`IOS-CI.md`](IOS-CI.md) for sideloading.
 
 The generated `.xcodeproj` and `Generated/` are gitignored.
@@ -43,13 +60,19 @@ The generated `.xcodeproj` and `Generated/` are gitignored.
 ## Android
 
 ```bash
-make android               # ./gradlew :app:assembleDebug
+make android               # debug APK -> release/Cinemacore-v<version>-debug.apk
+make android-release       # release APK -> release/Cinemacore-v<version>.apk
+make dev-android           # install the debug build on a device
 ```
 
-`make android` exports `APP_FULL_VERSION`, `APP_BUILD_NUMBER` and `APP_COMMIT`
-from `scripts/version`, so Gradle writes the tag version into `versionName`,
-`versionCode` and `BuildConfig.GIT_COMMIT`. A raw Gradle build stays on the
-`0.0.0-dev` / build `1` / `local` fallbacks.
+`make android` and `make android-release` export `APP_FULL_VERSION`,
+`APP_BUILD_NUMBER` and `APP_COMMIT` from `scripts/version`, so Gradle writes the
+tag version into `versionName`, `versionCode` and `BuildConfig.GIT_COMMIT`. A raw
+Gradle build stays on the `0.0.0-dev` / build `1` / `local` fallbacks.
+
+No keystore is committed, so release APKs are signed with the debug key and stay
+installable. Set `CINEMACORE_KEYSTORE`, `CINEMACORE_KEYSTORE_PASSWORD`,
+`CINEMACORE_KEY_ALIAS` and `CINEMACORE_KEY_PASSWORD` to sign with a real key.
 
 ## Web
 
@@ -63,5 +86,5 @@ There is no web app yet. Future web build systems must inject
 |---|---|
 | `make ios-xtool` / `scripts/xtool` | concrete plist generated from `VERSION` |
 | `make ios-xcode` / `make ios-release` / CI | `Generated/Version.xcconfig` |
-| `make android` / CI | `APP_*` env into Gradle + `BuildConfig` |
+| `make android` / `make android-release` / `dev-android` / CI | `APP_*` env into Gradle + `BuildConfig` |
 | raw local build without make/wrapper | `0.0.0-dev`, build `0`/`1`, `local` |

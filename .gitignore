@@ -15,6 +15,9 @@ XTLAuthToken
 # Go
 /bin/
 /dist/
+
+# Local build artifacts (make android*/ios-release/dev-*)
+/release/
 *.test
 *.out
 /cinemacore

@@ -1,0 +1,42 @@
+#!/usr/bin/env node
+// Tag the version already in VERSION. Never bumps or pushes: `make release`
+// bumps, commits and tags; this only stamps an existing version so a build can
+// be reproduced from its tag.
+const { execFileSync } = require('node:child_process');
+const { ROOT, derive } = require('./lib/version.cjs');
+
+function git(args) {
+  return execFileSync('git', args, {
+    cwd: ROOT,
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  }).trim();
+}
+
+function fail(message) {
+  console.error(`tag: ${message}`);
+  process.exit(1);
+}
+
+try {
+  const { tag, full, build, commit } = derive();
+
+  const dirty = git(['status', '--porcelain', '--untracked-files=no']);
+  if (dirty) {
+    fail(`tracked changes present; commit before tagging:\n${dirty}`);
+  }
+
+  try {
+    git(['rev-parse', '--quiet', '--verify', `refs/tags/${tag}`]);
+    fail(`${tag} already exists`);
+  } catch (error) {
+    if (error.status !== 1) throw error;
+  }
+
+  git(['tag', '-a', tag, '-m', tag]);
+  console.log(`tagged ${tag} at ${commit} (${full}, build ${build})`);
+  console.log('Push when ready:');
+  console.log(`  git push origin ${tag}`);
+} catch (error) {
+  fail(error.message);
+}

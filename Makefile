@@ -3,19 +3,26 @@ SHELL := bash
 
 IOS := mobile/ios/Cinemacore
 ANDROID := mobile/android
+RELEASE_DIR := $(CURDIR)/release
 
-.PHONY: help version check build test test-go test-swift test-android \
-	ios-xtool ios-ipa ios-xcode ios-release android android-apk \
-	release release-dry-run web
+.PHONY: help version check tag build test test-go test-swift test-android \
+	dev-ios dev-android \
+	ios-xtool ios-ipa ios-xcode ios-release android android-apk android-release \
+	tag-release release release-dry-run web
 
 help:
 	@printf '%s\n' \
-	  'Cinemacore builds' \
+	  'Cinemacore builds (artifacts land in release/, gitignored)' \
 	  '' \
 	  '  make version                 generate iOS xcconfig + CI plist from VERSION' \
 	  '  make check                   validate VERSION and tag format' \
-	  '  make build                   Go build + Android debug APK' \
+	  '  make tag                     tag the current commit with VERSION (local)' \
+	  '  make build                   versioned Go build + versioned debug APK' \
 	  '  make test                    Go race suite + Swift core tests + Android tests' \
+	  '' \
+	  'Devices' \
+	  '  make dev-ios ARGS="--usb"    build, install and run on a connected iPhone' \
+	  '  make dev-android             build and install the debug APK on a device/emulator' \
 	  '' \
 	  'iOS' \
 	  '  make ios-xtool ARGS="..."    xtool build with the real version embedded' \
@@ -26,6 +33,7 @@ help:
 	  'Android' \
 	  '  make android                 debug APK' \
 	  '  make android-apk             debug APK alias' \
+	  '  make android-release         installable release APK (debug-signed without a keystore)' \
 	  '' \
 	  'Releases' \
 	  '  make release-dry-run ARGS="patch --channel beta"' \
@@ -39,7 +47,11 @@ version:
 check:
 	./scripts/version --check
 
-build:
+# Tag the version already in VERSION; `make release` bumps and tags in one go.
+tag:
+	./scripts/tag
+
+build: version
 	go build ./...
 	$(MAKE) android
 
@@ -53,6 +65,13 @@ test-swift:
 
 test-android:
 	cd $(ANDROID) && ./gradlew --no-daemon :app:testDebugUnitTest
+
+dev-ios:
+	./scripts/xtool dev run $(ARGS)
+
+dev-android:
+	@set -a; source <(./scripts/version --env); set +a; \
+	cd $(ANDROID) && ./gradlew --no-daemon :app:installDebug
 
 # xtool cannot expand $(BUILD_SETTINGS); the wrapper swaps in a concrete
 # Info.plist for the build and restores the committed dev fallback afterwards.
@@ -81,7 +100,19 @@ ios-release:
 
 android android-apk:
 	@set -a; source <(./scripts/version --env); set +a; \
-	cd $(ANDROID) && ./gradlew --no-daemon :app:assembleDebug
+	cd $(ANDROID) && ./gradlew --no-daemon :app:assembleDebug && \
+	mkdir -p $(RELEASE_DIR) && \
+	cp app/build/outputs/apk/debug/app-debug.apk \
+	  $(RELEASE_DIR)/Cinemacore-$$APP_TAG-debug.apk
+
+# Without CINEMACORE_KEYSTORE* Gradle signs with the debug key so the APK
+# installs; set those vars for a real production signature.
+android-release:
+	@set -a; source <(./scripts/version --env); set +a; \
+	cd $(ANDROID) && ./gradlew --no-daemon :app:assembleRelease && \
+	mkdir -p $(RELEASE_DIR) && \
+	cp app/build/outputs/apk/release/app-release.apk \
+	  $(RELEASE_DIR)/Cinemacore-$$APP_TAG.apk
 
 release-dry-run:
 	./scripts/release $(ARGS) --dry-run
