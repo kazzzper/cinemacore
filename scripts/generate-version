@@ -23,8 +23,8 @@ function setPlistValue(plist, key, value) {
   return plist.replace(pattern, (_, open, close) => `${open}${value}${close}`);
 }
 
-function concretePlist(info) {
-  let plist = fs.readFileSync(INFO_PLIST, 'utf8');
+function concretePlist(info, source = INFO_PLIST) {
+  let plist = fs.readFileSync(source, 'utf8');
   plist = setPlistValue(plist, 'CFBundleShortVersionString', marketingVersion(info.version));
   plist = setPlistValue(plist, 'CFBundleVersion', String(info.build));
   plist = setPlistValue(plist, 'AppFullVersion', info.full);
@@ -42,7 +42,10 @@ try {
   if (concreteIndex !== -1) {
     const target = args[concreteIndex + 1];
     if (!target) throw new Error('--concrete needs an output path');
-    fs.writeFileSync(target, concretePlist(info));
+    const sourceIndex = args.indexOf('--source');
+    const source = sourceIndex === -1 ? INFO_PLIST : args[sourceIndex + 1];
+    if (!source) throw new Error('--source needs a plist path');
+    fs.writeFileSync(target, concretePlist(info, source));
     console.log(`wrote ${target} (${info.full} ${info.build} ${info.commit})`);
     process.exit(0);
   }

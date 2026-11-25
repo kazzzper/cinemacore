@@ -20,14 +20,13 @@ brew install xtool-org/tap/xtool
 
 `scripts/ios-build` is also `make ios-release`. It runs
 `scripts/version --env`, `scripts/generate-version`,
-`xtool dev generate-xcode-project`, then two `xcodebuild` commands
-(`-sdk iphoneos` and `-sdk iphonesimulator`) with
-`Generated/Version.xcconfig`, `INFOPLIST_FILE=Generated/Info.plist`,
-`GENERATE_INFOPLIST_FILE=NO`, `INFOPLIST_EXPAND_BUILD_SETTINGS=YES` and
-`CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO`. That expands the generated
-plist to the concrete `VERSION`, build number and commit. On Linux the script
-falls back to `scripts/xtool` for local builds; CI requires `xcodebuild` and
-fails instead of falling back.
+`xtool dev generate-xcode-project`, writes the concrete `VERSION`, build number
+and commit into the plist that the generated app target already points at, then
+runs two `xcodebuild` commands (`-sdk iphoneos` and `-sdk iphonesimulator`) with
+signing disabled. The plist is written in place rather than passed as
+`INFOPLIST_FILE`, because command-line build settings also apply to SwiftPM's
+dependency bundles and stop them generating their own plists. The script
+requires `xcodebuild`; on Linux use `make ios-ipa` instead.
 
 The job then:
 

@@ -2,9 +2,10 @@
 # The one unsigned iOS pipeline: device .ipa + simulator .app, verified against
 # VERSION and packaged into release/. CI and `make ios-release` both call this.
 #
-# macOS uses xcodebuild on the project `xtool dev generate-xcode-project`
-# emits. That project has no shared schemes, so build the target by name
-# instead of selecting a scheme. Elsewhere xtool builds the same artifacts.
+# Xcode does the build. `xtool dev generate-xcode-project` only supplies the app
+# target, and the concrete version goes into the plist that target already
+# points at: passing INFOPLIST_FILE/GENERATE_INFOPLIST_FILE on the command line
+# also hits SwiftPM's resource bundles and stops them generating their plists.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -12,7 +13,12 @@ IOS="$ROOT/mobile/ios/Cinemacore"
 APP="${IOS_PRODUCT:-Cinemacore}"
 OUT="$ROOT/release"
 TMP="$(mktemp -d)"
-trap 'rm -rf "$TMP"' EXIT
+PROJECT_INFO=""
+restore_plist() {
+  [ -n "$PROJECT_INFO" ] && [ -f "$TMP/project-Info.plist" ] &&
+    cp "$TMP/project-Info.plist" "$PROJECT_INFO"
+}
+trap 'restore_plist; rm -rf "$TMP"' EXIT
 
 VERSION_ENV=$(node "$ROOT/scripts/version" --env)
 eval "$VERSION_ENV"
@@ -25,65 +31,49 @@ done
 cd "$ROOT"
 node scripts/generate-version
 
-if [ "${CI:-}" = "true" ] && ! command -v xcodebuild >/dev/null 2>&1; then
-  echo "ios-build: CI requires xcodebuild; xtool is only the local Linux fallback" >&2
+if ! command -v xcodebuild >/dev/null 2>&1; then
+  echo "ios-build: xcodebuild is required (macOS). On Linux use make ios-ipa." >&2
+  exit 1
+fi
+if ! command -v xtool >/dev/null 2>&1; then
+  echo "ios-build: xtool is required to generate the Xcode project" >&2
   exit 1
 fi
 
-if command -v xcodebuild >/dev/null 2>&1; then
-  cd "$IOS"
-  xtool dev generate-xcode-project
-  PROJECT="$IOS/xtool/.xtool-tmp/Cinemacore.xcodeproj"
-  TARGET="${IOS_TARGET:-$APP-App}"
-  if [ ! -d "$PROJECT" ]; then
-    echo "ios-build: xtool did not write $PROJECT" >&2
-    exit 1
-  fi
-  xcodebuild -list -project "$PROJECT"
-
-  build_xcode() {
-    xcodebuild \
-      -project "$PROJECT" \
-      -target "$TARGET" \
-      -configuration Release \
-      -sdk "$1" \
-      SYMROOT="$2" OBJROOT="$2/obj" \
-      -xcconfig "$IOS/Generated/Version.xcconfig" \
-      INFOPLIST_FILE="$IOS/Generated/Info.plist" \
-      GENERATE_INFOPLIST_FILE=NO INFOPLIST_EXPAND_BUILD_SETTINGS=YES \
-      CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
-      build
-  }
-  build_xcode iphoneos "$TMP/device"
-  build_xcode iphonesimulator "$TMP/sim"
-
-  DEVICE_APP=$(find "$TMP/device/Release-iphoneos" -maxdepth 1 -name '*.app' | head -1)
-  SIM_APP=$(find "$TMP/sim/Release-iphonesimulator" -maxdepth 1 -name '*.app' | head -1)
-  test -n "$DEVICE_APP" || { echo "ios-build: no device .app under $TMP" >&2; exit 1; }
-  test -n "$SIM_APP" || { echo "ios-build: no simulator .app under $TMP" >&2; exit 1; }
-
-  mkdir -p "$TMP/Payload"
-  cp -R "$DEVICE_APP" "$TMP/Payload/"
-  IPA="$TMP/Cinemacore-${APP_TAG}-unsigned.ipa"
-  (cd "$TMP" && zip -qry "$IPA" Payload)
-else
-  # Local Linux only: CI must use xcodebuild.
-  if ! command -v xtool >/dev/null 2>&1; then
-    echo "ios-build: needs xcodebuild or xtool" >&2
-    exit 1
-  fi
-  # scripts/xtool swaps the concrete VERSION into Info.plist for the build and
-  # restores the committed dev fallback afterwards.
-  "$ROOT/scripts/xtool" dev build --configuration release --ipa
-  "$ROOT/scripts/xtool" dev build --configuration release --triple arm64-apple-ios-simulator
-  IPA="$IOS/xtool/$APP.ipa"
-  SIM_APP="$IOS/xtool/$APP.app"
-  test -f "$IPA" || { echo "ios-build: missing $IPA" >&2; exit 1; }
-  test -d "$SIM_APP" || { echo "ios-build: missing $SIM_APP" >&2; exit 1; }
-  unzip -q "$IPA" -d "$TMP"
-  DEVICE_APP=$(find "$TMP/Payload" -maxdepth 1 -name '*.app' | head -1)
-  test -n "$DEVICE_APP" || { echo "ios-build: no .app in $IPA" >&2; exit 1; }
+cd "$IOS"
+xtool dev generate-xcode-project
+PROJECT="$IOS/xtool/.xtool-tmp/Cinemacore.xcodeproj"
+PROJECT_INFO="$IOS/xtool/.xtool-tmp/Cinemacore/Info.plist"
+TARGET="${IOS_TARGET:-$APP-App}"
+if [ ! -d "$PROJECT" ] || [ ! -f "$PROJECT_INFO" ]; then
+  echo "ios-build: xtool did not write a usable project under $IOS/xtool/.xtool-tmp" >&2
+  exit 1
 fi
+cp "$PROJECT_INFO" "$TMP/project-Info.plist"
+node "$ROOT/scripts/generate-version" --concrete "$PROJECT_INFO" --source "$TMP/project-Info.plist"
+
+build_xcode() {
+  xcodebuild \
+    -project "$PROJECT" \
+    -target "$TARGET" \
+    -configuration Release \
+    -sdk "$1" \
+    SYMROOT="$2" OBJROOT="$2/obj" \
+    CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+    build
+}
+build_xcode iphoneos "$TMP/device"
+build_xcode iphonesimulator "$TMP/sim"
+
+DEVICE_APP=$(find "$TMP/device/Release-iphoneos" -maxdepth 1 -name '*.app' | head -1)
+SIM_APP=$(find "$TMP/sim/Release-iphonesimulator" -maxdepth 1 -name '*.app' | head -1)
+test -n "$DEVICE_APP" || { echo "ios-build: no device .app under $TMP" >&2; exit 1; }
+test -n "$SIM_APP" || { echo "ios-build: no simulator .app under $TMP" >&2; exit 1; }
+
+mkdir -p "$TMP/Payload"
+cp -R "$DEVICE_APP" "$TMP/Payload/"
+IPA="$TMP/Cinemacore-${APP_TAG}-unsigned.ipa"
+(cd "$TMP" && zip -qry "$IPA" Payload)
 
 check_plist() {
   python3 - "$1" "$APP_FULL_VERSION" "$APP_BUILD_NUMBER" "$APP_COMMIT" "$MARKETING_VERSION" <<'PY'

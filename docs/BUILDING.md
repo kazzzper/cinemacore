@@ -52,9 +52,9 @@ make ios-release           # exact CI pipeline: unsigned .ipa + simulator .app.z
 ```
 
 `make ios-release` calls `scripts/ios-build`, the same script the tag workflow
-runs. On macOS it generates the Xcode project with xtool and builds the device
-and simulator app with `xcodebuild`; without Xcode it uses `xtool` directly. Both
-paths verify `AppFullVersion`, `CFBundleVersion`, `AppCommit` and
+runs. It generates the Xcode project with xtool, then builds the device and
+simulator app with `xcodebuild` only (macOS required). It verifies
+`AppFullVersion`, `CFBundleVersion`, `AppCommit` and
 `CFBundleShortVersionString` inside the outputs and write
 `release/Cinemacore-v<version>-unsigned.ipa` and
 `release/Cinemacore-v<version>-simulator.app.zip`. There is no signing and no
