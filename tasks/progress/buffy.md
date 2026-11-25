@@ -267,3 +267,4 @@ iOS
 - 2026-11-25T19:17:00.167Z — registered (freebuff)
 - 2026-11-25T19:17:07.852Z — claimed T-037 — iOS release builds with the checked-in Xcode project, no xtool on the runner
 - 2026-11-25T19:17:07.903Z — updated T-037 -> review: checked-in Cinemacore.xcodeproj + shared scheme; scripts/ios-build is xcodebuild-only (unsigned device IPA, ad-hoc simulator app); scripts/ios-test runs CinemacoreCore tests on an iOS Simulator; release.yml drops xtool. Not yet run on a mac: waiting on a tag.
+- 2026-11-25T19:23:34.388Z — updated T-037: release.yml: ios-verify job on xcode-27 for main/PR/manual runs (list, destinations, ios-test, ios-build, artifact 7d); tag-gated verify/android/ios/publish.

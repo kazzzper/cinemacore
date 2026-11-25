@@ -483,7 +483,7 @@
       "owner": "buffy",
       "deps": [],
       "acceptance": "release.yml ios job uses xcodebuild only; unsigned device .ipa; ad-hoc simulator app; unit tests on an iOS Simulator",
-      "updatedAt": "2026-11-25T19:17:07.902Z",
+      "updatedAt": "2026-11-25T19:23:34.387Z",
       "links": []
     }
   ]
