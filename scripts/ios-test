@@ -52,7 +52,16 @@ if [ -z "$DESTINATION_ID" ]; then
 fi
 
 echo "ios-test: scheme $SCHEME on simulator $DESTINATION_ID"
+
+# Optional: a failure is only diagnosable from its bundle, and CI keeps it when
+# the job goes red. xcodebuild refuses to overwrite an existing one.
+RESULT_ARGS=()
+if [ -n "${IOS_RESULT_BUNDLE:-}" ]; then
+  rm -rf "$IOS_RESULT_BUNDLE"
+  RESULT_ARGS=(-resultBundlePath "$IOS_RESULT_BUNDLE")
+fi
+
 xcodebuild test \
   -scheme "$SCHEME" \
   -destination "platform=iOS Simulator,id=$DESTINATION_ID" \
-  -derivedDataPath "$DERIVED"
+  -derivedDataPath "$DERIVED" ${RESULT_ARGS[@]+"${RESULT_ARGS[@]}"}

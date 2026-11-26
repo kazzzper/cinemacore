@@ -269,3 +269,21 @@ iOS
 - 2026-11-25T19:17:07.903Z — updated T-037 -> review: checked-in Cinemacore.xcodeproj + shared scheme; scripts/ios-build is xcodebuild-only (unsigned device IPA, ad-hoc simulator app); scripts/ios-test runs CinemacoreCore tests on an iOS Simulator; release.yml drops xtool. Not yet run on a mac: waiting on a tag.
 - 2026-11-25T19:23:34.388Z — updated T-037: release.yml: ios-verify job on xcode-27 for main/PR/manual runs (list, destinations, ios-test, ios-build, artifact 7d); tag-gated verify/android/ios/publish.
 - 2026-11-25T19:50:22.774Z — updated T-037: Simulator run: 53 assertion failures. Root cause for the download/progressive cluster = URL.resourceValues caching stale sizes on Darwin; both size helpers now stat. Debounce cluster = main-actor starvation, wait budget raised. 443/443 green on Linux before and after.
+- 2026-11-26T13:16:46.222Z — updated T-037: split the iOS test lanes: linux ios-core job is the gate, simulator suite is tags-only and uploads its xcresult
+
+## Decision 2026-11-26 — where the iOS tests run
+
+Question was xtool or Xcode, and whether to test where we are conversant. Answer: **both,
+for different jobs, plus Linux where the logic actually lives.**
+
+- xtool cannot run tests at all (no Simulator off macOS; xtool#177 says keep testable logic in a
+  cross-platform target and test it on Linux). It stays local build/device only.
+- `CinemacoreCore` is pure Foundation, so the 443 tests are platform-neutral: **7 s and green on
+  Linux** (Swift 6.4.1) vs a paid macOS simulator run.
+- New `ios-core` job (`ubuntu-24.04`, preinstalled Swift 6.4) is the gate and `publish` needs it.
+- Simulator suite moved to the tag job only, where it validates the artifact being shipped, and now
+  writes an `.xcresult` that is uploaded on failure — the next red run is diagnosable.
+- `ios-verify` (every push/PR) keeps `xcodebuild -list` + `ios-build`: compile proof, no second copy
+  of the suite on a paid runner.
+
+Open: the tag lane has never run green; that needs a push (or a tag) and the uploaded bundle.

@@ -20,6 +20,21 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # The unit-test gate. CinemacoreCore is pure Foundation precisely so its 443
+  # tests run anywhere Swift does; Linux is where the project is developed, so
+  # it is where the tests are authoritative and cheap (seconds, free minutes).
+  # 24.04 is pinned for its preinstalled Swift 6.4 toolchain: 26.04 does not
+  # ship one, and downloading a 3.5 GB toolchain per run buys nothing here.
+  ios-core:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - name: Toolchain
+        run: swift --version
+      - name: Unit tests
+        working-directory: mobile/ios/CinemacoreCore
+        run: swift test
+
   verify:
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-26.04
@@ -91,10 +106,23 @@ jobs:
           xcrun --find swift
           swift --version
           xcodebuild -showsdks | grep -E 'iOS|Simulator' | head -5
-      # Tests on iOS, not on the macOS host: one toolchain, one SDK, the same
-      # `#if canImport(Darwin)` / `#if os(iOS)` paths the artifact ships.
+      # The slow Darwin lane, and the only place iOS-specific behaviour is
+      # exercised: a simulator, the iOS SDK, the same `#if os(iOS)` code the
+      # artifact ships. It runs on tags only because it costs macOS minutes per
+      # run and cannot reproduce a logic failure the Linux gate would miss; the
+      # per-push job below proves the project still compiles.
       - name: iOS unit tests
-        run: ./scripts/ios-test
+        run: IOS_RESULT_BUNDLE="$RUNNER_TEMP/ios-tests.xcresult" ./scripts/ios-test
+      # A failed suite is only diagnosable with its bundle: xcodebuild's log
+      # names failing assertions but not the file/line state around them.
+      - name: Keep the test bundle if the suite failed
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ios-tests-xcresult
+          path: ${{ runner.temp }}/ios-tests.xcresult
+          if-no-files-found: ignore
+          retention-days: 7
       # Same script as `make ios-release`; it verifies the embedded identity.
       - name: Build unsigned iOS artifacts
         run: ./scripts/ios-build
@@ -104,8 +132,10 @@ jobs:
           path: ${{ github.workspace }}/release/
           if-no-files-found: error
 
-  # Every non-tag run proves the committed project still builds and its tests
-  # still pass, on the same image the release uses. Nothing here publishes.
+  # Every non-tag run proves the committed project still builds on the same
+  # image the release uses. Nothing here publishes. No simulator test: the unit
+  # tests already ran on Linux in `ios-core`, and a second macOS pass on every
+  # push bought a slow, cloned red suite rather than a new signal.
   ios-verify:
     if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
     runs-on: xcode-27
@@ -125,8 +155,6 @@ jobs:
         run: |
           xcodebuild -list -project Cinemacore.xcodeproj
           xcodebuild -showdestinations -project Cinemacore.xcodeproj -scheme Cinemacore | head -20
-      - name: iOS unit tests
-        run: ./scripts/ios-test
       - name: Build unsigned iOS artifacts
         run: ./scripts/ios-build
       - uses: actions/upload-artifact@v7
@@ -137,7 +165,8 @@ jobs:
           retention-days: 7
 
   publish:
-    needs: [android, ios]
+    # `ios-core` is not tag-gated, so a red unit test blocks the release.
+    needs: [android, ios, ios-core]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-26.04
     steps:

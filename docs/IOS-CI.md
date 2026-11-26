@@ -17,48 +17,81 @@ generated on the runner.
 
 ## Runner
 
-`runs-on: xcode-27` — the GitHub-hosted image that tracks one Xcode major
-version: macOS 27 (arm64 only), Xcode 27.1 by default (27.0 and 27.2 also
-installed), Swift 6.4, iOS 27 SDK. `Package.swift` declares
+Xcode work is `runs-on: xcode-27` — the GitHub-hosted image that tracks one
+Xcode major version: macOS 27 (arm64 only), Xcode 27.1 by default (27.0 and
+27.2 also installed), Swift 6.4, iOS 27 SDK. `Package.swift` declares
 `swift-tools-version: 6.4`, which that toolchain reads.
 
-Two paths run on the macOS image:
+The unit-test job is `runs-on: ubuntu-24.04`, pinned for its preinstalled Swift
+6.4. The 26.04 image ships no Swift toolchain and installing one costs a 3.5 GB
+download per run.
 
-| Trigger | Job | Publishes |
-|---|---|---|
-| tag `v*` | `ios` | yes, into the GitHub Release |
-| push to `main`, pull request, manual dispatch | `ios-verify` | no, artifacts kept 7 days |
+Three jobs touch iOS code:
 
-`ios-verify` prints `xcodebuild -list` / `-showdestinations`, runs the same
-`scripts/ios-test` and `scripts/ios-build`, and uploads the results. That is how
-the Xcode project itself is checked without cutting a tag. macOS minutes are
-expensive: the verify job costs a simulator test run plus two builds per push,
-so drop the `pull_request` trigger if that becomes the budget.
+| Trigger | Job | Runner | Does | Publishes |
+|---|---|---|---|---|
+| every run | `ios-core` | `ubuntu-24.04` | `swift test` | — |
+| tag `v*` | `ios` | `xcode-27` | tests + build | yes, into the GitHub Release |
+| push to `main`, PR, dispatch | `ios-verify` | `xcode-27` | build only | no, kept 7 days |
+
+## Where the tests run
+
+`mobile/ios/CinemacoreCore` is pure Foundation on purpose, so its 443 tests run
+anywhere a Swift 6.4 toolchain does. That makes the split below possible.
+
+- **`ios-core`, Linux, every run — the gate.** Seconds against a local 7 s
+  run, free minutes, the same command as `make test-swift`, and the platform
+  this project is developed and debugged on. `publish` depends on it, so a tag
+  cannot release with a failing suite.
+- **`ios`, macOS Simulator, tags only — the Darwin lane.** The only place
+  `#if os(iOS)` / `#if canImport(Darwin)` code runs against the SDK the
+  artifact ships with, so it stays; but it runs on the tag whose build it is
+  validating, not on every push. `IOS_RESULT_BUNDLE` makes `scripts/ios-test`
+  write an `.xcresult`, which the job uploads when the suite fails — the next
+  red run is readable instead of guessed at.
+- **`ios-verify`, macOS, every non-tag run — compile proof.** Builds the app
+  but does not re-run the suite. Xcode's job here is to prove the committed
+  project still compiles and bundles; a second copy of the tests on a paid
+  runner adds cost, not signal.
+
+### Why not xtool for tests
+
+xtool builds a SwiftPM package into an iOS app, signs and installs it, and it
+stays the local build and device driver (`make dev-ios`, `make ios-ipa`). It
+cannot run tests: that needs the iOS Simulator, which exists only on macOS
+([xtool#177](https://github.com/xtool-org/xtool/issues/177); xtool's own answer
+is to keep testable logic in a cross-platform target and test it on Linux —
+which is exactly what this repository already does). So xtool is the wrong tool
+for this job, Xcode is the only tool for the simulator lane, and neither
+replaces the Linux gate.
+
+### Why not `swift test` on the macOS host
+
+It builds for macOS, a platform the app never ships on: it would exercise
+Darwin Foundation, but not the iOS SDK, and still needs a macOS runner. The
+Linux gate covers the logic; the simulator covers the SDK.
 
 ## Pipeline
 
-`.github/workflows/release.yml`, jobs `ios` (tag) and `ios-verify` (everything
-else), both on the `xcode-27` image:
+`.github/workflows/release.yml`:
 
-1. `xcodebuild -version`, `xcrun --find swift`, `swift --version`,
-   `xcodebuild -showsdks` — so a toolchain problem is visible in the log.
-2. `./scripts/ios-test` — unit tests on an iOS Simulator.
-3. `./scripts/ios-build` — unsigned device `.ipa` + ad-hoc-signed simulator app.
-4. Upload both to the GitHub Release.
+1. `ios-core`: `swift --version`, then `swift test` in the package.
+2. `ios` (tag): `xcodebuild -version`, `xcrun --find swift`, `swift --version`,
+   `xcodebuild -showsdks` — so a toolchain problem is visible in the log — then
+   `./scripts/ios-test`, then `./scripts/ios-build` (unsigned device `.ipa` +
+   ad-hoc-signed simulator app), then the artifacts into the GitHub Release.
+3. `ios-verify` (everything else): `xcodebuild -list` / `-showdestinations`,
+   then `./scripts/ios-build`, and uploads the result.
 
-### Tests run on iOS
+### The simulator lane
 
 `scripts/ios-test` runs `xcodebuild test` against the `CinemacoreCore` package
-with an iOS Simulator destination. `swift test` on the macOS host builds for
-macOS — a platform this app never ships on — and compiles Darwin-only code that
-the Linux host compiles out entirely, so the two hosts disagree about what is
-even legal. Testing on iOS keeps one compiler, one SDK, and the same
-`#if canImport(Darwin)` / `#if os(iOS)` conditionals as the artifact.
-
-The scheme name is discovered from `xcodebuild -list -json` (Xcode derives
-`<package>-Package` plus one scheme per product) and the simulator is the first
-available iPhone from `xcrun simctl list devices available`, so a runtime change
-in the runner image does not break the job.
+with an iOS Simulator destination. The scheme name is discovered from
+`xcodebuild -list -json` (Xcode derives `<package>-Package` plus one scheme per
+product) and the simulator is the first available iPhone from
+`xcrun simctl list devices available`, so a runtime change in the runner image
+does not break the job. Set `IOS_RESULT_BUNDLE=/path/to/x.xcresult` to keep the
+bundle (CI sets it and uploads it on failure).
 
 ### Signing
 
@@ -119,6 +152,12 @@ free Apple ID; the signature lasts 7 days, then re-sideload. See
   `swift-nio` and `swift-crypto`; check network access, then re-run.
 - **`no available iPhone simulator`** — the image's installed runtimes changed;
   `xcrun simctl list devices available` shows what is there.
+- **The simulator suite is red on a tag** — download the `ios-tests-xcresult`
+  artifact and open it (`xcodebuild -resultBundlePath` output), or read the
+  failing `@Test` lines from the log. Do not widen timeouts to make it green:
+  a Darwin-only failure in the download / progressive-server suites has been a
+  real bug before (`URL.resourceValues` caches per instance on Apple platforms,
+  so a grown partial file kept reporting its old size).
 - **Version check fails** — the plist was not rewritten; confirm
   `scripts/ios-build` ran `scripts/generate-version --concrete` and that the
   target still has `INFOPLIST_FILE = Info.plist`.

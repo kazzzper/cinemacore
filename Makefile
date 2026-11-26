@@ -97,7 +97,8 @@ ios-xcode:
 	  CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="-" \
 	  build
 
-# The same unit tests CI runs, on a simulator.
+# The Darwin lane: the same tests, on a simulator, against the iOS SDK. CI runs
+# this on tags only; `make test-swift` is the gate.
 ios-test:
 	./scripts/ios-test
 
