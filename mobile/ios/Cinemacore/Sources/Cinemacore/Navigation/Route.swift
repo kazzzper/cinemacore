@@ -44,6 +44,26 @@ struct PlaybackRequest: Hashable, Identifiable {
 }
 
 extension PlaybackRequest {
+    /// The request a stored resume row needs, so Home and History cannot build
+    /// the episode from the same point two different ways.
+    init(resume point: ResumePoint) {
+        let episode = point.season.flatMap { season in
+            point.episode.map { number in
+                Episode(subjectID: point.subjectID, season: season, number: number)
+            }
+        }
+        self.init(
+            subject: Subject(
+                id: point.subjectID,
+                title: point.title,
+                poster: point.poster,
+                kind: point.episode == nil ? "movie" : "series"
+            ),
+            season: point.season,
+            episode: episode
+        )
+    }
+
     /// Rebuilds the minimal request a stored row needs (history, downloads).
     ///
     /// The player re-resolves the full title from the provider, so only the

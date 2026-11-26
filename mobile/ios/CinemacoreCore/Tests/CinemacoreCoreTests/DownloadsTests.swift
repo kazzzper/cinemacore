@@ -27,6 +27,7 @@ private let baseDate = Date(timeIntervalSince1970: 1_700_000_000)
 
 private func makeItem(
     id: String = "subject-1-s1e1-1080p",
+    subjectID: String = "subject-1",
     title: String = "Subject",
     quality: String = "1080p",
     cookie: String? = nil,
@@ -44,7 +45,7 @@ private func makeItem(
 ) -> DownloadItem {
     DownloadItem(
         id: id,
-        subjectID: "subject-1",
+        subjectID: subjectID,
         title: title,
         season: season,
         episode: episode,
@@ -479,6 +480,29 @@ struct DownloadListGroupedTests {
         #expect(sections.map(\.id) == ["downloading", "paused", "failed", "completed"])
         #expect(sections.map(\.title) == ["Downloading", "Paused", "Failed", "Completed"])
         #expect(sections.first?.items.map(\.id) == ["apple-1"])
+    }
+
+    @Test("grouping by episode keeps a show together and orders its episodes")
+    func episode() {
+        let downloads = [
+            makeItem(id: "show-b-e1", subjectID: "show-b", title: "Beta", season: 1, episode: 1),
+            makeItem(id: "show-a-e2", subjectID: "show-a", title: "Alpha", season: 1, episode: 2),
+            makeItem(id: "show-a-e1", subjectID: "show-a", title: "Alpha", season: 1, episode: 1),
+            makeItem(id: "show-a-s2e1", subjectID: "show-a", title: "Alpha", season: 2, episode: 1),
+        ]
+
+        let sections = DownloadList.grouped(
+            downloads,
+            by: .episode,
+            order: .init(key: .size, ascending: false)
+        )
+
+        #expect(sections.map(\.title) == ["Alpha", "Beta"])
+        #expect(sections.first?.id == "episode-show-a")
+        // Transmission order, not the chosen sort: the sort only breaks ties
+        // between two downloads of the same episode.
+        #expect(sections.first?.items.map(\.id) == ["show-a-e1", "show-a-e2", "show-a-s2e1"])
+        #expect(sections.last?.items.map(\.id) == ["show-b-e1"])
     }
 
     @Test("an empty list has no sections in any grouping", arguments: DownloadGrouping.allCases)

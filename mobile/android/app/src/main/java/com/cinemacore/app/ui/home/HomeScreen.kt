@@ -2,12 +2,14 @@ package com.cinemacore.app.ui.home
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -16,6 +18,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -25,6 +29,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -40,8 +45,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.cinemacore.app.R
+import com.cinemacore.app.domain.ContinueWatching
 import com.cinemacore.app.domain.LoadState
 import com.cinemacore.app.domain.PlaybackRequest
+import com.cinemacore.app.domain.ResumePoint
 import com.cinemacore.app.domain.Section
 import com.cinemacore.app.domain.Subject
 import com.cinemacore.app.ui.CinemacoreViewModel
@@ -49,6 +56,7 @@ import com.cinemacore.app.ui.components.HeroScrim
 import com.cinemacore.app.ui.components.NoticeBanner
 import com.cinemacore.app.ui.components.Rail
 import com.cinemacore.app.ui.components.RemoteImage
+import com.cinemacore.app.ui.components.SectionTitle
 import com.cinemacore.app.ui.components.StateView
 import com.cinemacore.app.ui.components.Wordmark
 import com.cinemacore.app.ui.theme.CinemaColors
@@ -76,7 +84,17 @@ fun HomeScreen(
 
     val hidden = app.settings.hiddenRails
     val loadedState = viewModel.state
-    val visibleSections = viewModel.visibleSections(hidden).filter { it.items.isNotEmpty() }
+    val visibleSections = viewModel
+        .visibleSections(hidden, app.settings.railOrder)
+        .filter { it.items.isNotEmpty() }
+    // The app owns this rail: resume points live on the device, so a provider
+    // session that stops returning a continue row cannot take it away.
+    val resume = if (ContinueWatching.TITLE in hidden) {
+        emptyList()
+    } else {
+        ContinueWatching.points(app.history)
+    }
+    val hasContent = visibleSections.isNotEmpty() || resume.isNotEmpty()
     val displayState: LoadState<List<Section>> = when (loadedState) {
         LoadState.Idle -> LoadState.Idle
         LoadState.Loading -> LoadState.Loading
@@ -84,13 +102,13 @@ fun HomeScreen(
         is LoadState.Failed -> loadedState
         is LoadState.Locked -> loadedState
         is LoadState.Loaded ->
-            if (visibleSections.isEmpty()) LoadState.Empty else LoadState.Loaded(visibleSections)
+            if (!hasContent) LoadState.Empty else LoadState.Loaded(visibleSections)
     }
     val allRailsHidden = loadedState is LoadState.Loaded &&
-        visibleSections.isEmpty() &&
+        !hasContent &&
         hidden.isNotEmpty()
     val partial = loadedState is LoadState.Loaded &&
-        visibleSections.isNotEmpty() &&
+        hasContent &&
         hidden.isNotEmpty()
     val emptyTitle = stringResource(
         if (allRailsHidden) R.string.home_all_hidden_title else R.string.home_empty_title,
@@ -126,6 +144,7 @@ fun HomeScreen(
             ) { sections ->
                 HomeContent(
                     sections = sections,
+                    resume = resume,
                     showHiddenNotice = partial,
                     onOpenDetail = onOpenDetail,
                     onPlay = onPlay,
@@ -155,6 +174,7 @@ private fun HomeHeader() {
 @Composable
 private fun HomeContent(
     sections: List<Section>,
+    resume: List<ResumePoint>,
     showHiddenNotice: Boolean,
     onOpenDetail: (Subject) -> Unit,
     onPlay: (PlaybackRequest) -> Unit,
@@ -171,6 +191,11 @@ private fun HomeContent(
         if (showHiddenNotice) {
             item(key = "hidden-rails-notice") {
                 NoticeBanner(text = stringResource(R.string.home_hidden_rails_notice))
+            }
+        }
+        if (resume.isNotEmpty()) {
+            item(key = ContinueWatching.TITLE) {
+                ContinueWatchingRail(points = resume, onPlay = onPlay)
             }
         }
         if (featured != null) {
@@ -190,6 +215,78 @@ private fun HomeContent(
                 section = section,
                 onSubjectClick = onOpenDetail,
             )
+        }
+    }
+}
+
+@Composable
+private fun ContinueWatchingRail(
+    points: List<ResumePoint>,
+    onPlay: (PlaybackRequest) -> Unit,
+) {
+    Column(Modifier.fillMaxWidth()) {
+        SectionTitle(
+            text = ContinueWatching.TITLE,
+            modifier = Modifier.padding(horizontal = CinemaSpacing.screenHorizontal),
+        )
+        Spacer(Modifier.height(CinemaSpacing.x3))
+        LazyRow(
+            contentPadding = PaddingValues(horizontal = CinemaSpacing.screenHorizontal),
+            horizontalArrangement = Arrangement.spacedBy(CinemaSpacing.x3),
+        ) {
+            items(
+                items = points,
+                key = { "${it.subjectId}-${it.season}-${it.episode}" },
+            ) { point ->
+                Column(
+                    modifier = Modifier
+                        .width(124.dp)
+                        .clip(RoundedCornerShape(CinemaShape.poster))
+                        .clickable { onPlay(PlaybackRequest.fromResume(point)) },
+                ) {
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .aspectRatio(2f / 3f)
+                            .clip(RoundedCornerShape(CinemaShape.poster)),
+                    ) {
+                        RemoteImage(
+                            url = point.poster,
+                            modifier = Modifier.fillMaxSize(),
+                            contentDescription = point.title,
+                        )
+                        LinearProgressIndicator(
+                            progress = { point.progress.coerceIn(0f, 1f) },
+                            color = CinemaColors.Brand,
+                            trackColor = CinemaColors.Separator,
+                            modifier = Modifier
+                                .align(Alignment.BottomCenter)
+                                .fillMaxWidth()
+                                .height(3.dp),
+                        )
+                    }
+                    Spacer(Modifier.height(CinemaSpacing.x1))
+                    Text(
+                        text = point.title,
+                        style = MaterialTheme.typography.titleSmall,
+                        color = CinemaColors.TextPrimary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    val label = if (point.season != null && point.episode != null) {
+                        "S${point.season}E${point.episode}"
+                    } else {
+                        null
+                    }
+                    if (label != null) {
+                        Text(
+                            text = label,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = CinemaColors.TextSecondary,
+                        )
+                    }
+                }
+            }
         }
     }
 }

@@ -42,12 +42,16 @@ enum class DownloadSortKey {
 enum class DownloadGrouping {
     NONE,
     STATUS,
+
+    /** One section per show, with its episodes in transmission order. */
+    EPISODE,
     ;
 
     val label: String
         get() = when (this) {
             NONE -> "Ungrouped"
             STATUS -> "Group by status"
+            EPISODE -> "Group by episode"
         }
 }
 
@@ -105,6 +109,13 @@ data class ResumePoint(
         } else {
             0f
         }
+
+    /**
+     * A point worth putting on Home: moved past the opening credit, and not
+     * effectively finished. Mirrors the iOS `ResumePoint.isResumable`.
+     */
+    val isResumable: Boolean
+        get() = durationMs > 0 && progress < 0.98f && positionMs > 5_000L
 
     val episodeLabel: String?
         get() = when {

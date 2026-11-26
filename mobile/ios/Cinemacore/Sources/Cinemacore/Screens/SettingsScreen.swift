@@ -126,12 +126,29 @@ struct SettingsScreen: View {
                     Button {
                         UIPasteboard.general.string = version.display
                         copiedVersion = true
+                        // The confirmation is a moment, not a new label: the
+                        // row used to stay on "Copied" for the life of the
+                        // screen, hiding the version it exists to show.
+                        Task {
+                            try? await Task.sleep(for: .seconds(1.5))
+                            copiedVersion = false
+                        }
                     } label: {
-                        LabeledContent(copiedVersion ? "Copied" : "Version", value: version.display)
-                            .contentShape(Rectangle())
+                        LabeledContent {
+                            HStack(spacing: Layout.spacing1) {
+                                Text(version.display)
+                                if copiedVersion {
+                                    Image(systemName: "checkmark")
+                                        .foregroundStyle(theme.brand.color)
+                                }
+                            }
+                        } label: {
+                            Text("Version")
+                        }
+                        .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .accessibilityLabel("Copy version")
+                    .accessibilityLabel(copiedVersion ? "Version copied" : "Copy version")
                 }
 
                 Section("Diagnostics") {

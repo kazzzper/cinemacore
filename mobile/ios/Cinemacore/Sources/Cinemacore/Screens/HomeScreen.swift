@@ -43,8 +43,13 @@ struct HomeScreen: View {
         }
         .navigationTitle("Cinemacore")
         .navigationBarTitleDisplayMode(.inline)
-        .refreshable { await model.load() }
-        .task { await model.loadIfNeeded() }
+        .refreshable { await app.reloadHistory(); await model.load() }
+        .task {
+            // Cheap local read: the rail follows a resumed episode without
+            // refetching the catalogue.
+            await app.reloadHistory()
+            await model.loadIfNeeded()
+        }
         // A source switch swaps the repository out from under this view model.
         // Rebuilding it here — rather than remounting the whole navigation stack
         // — is what lets the switch happen without losing where the viewer was.
@@ -58,8 +63,14 @@ struct HomeScreen: View {
 
     @ViewBuilder
     private func rails(_ page: Page) -> some View {
-        let sections = model.visibleSections(hiding: app.settings.hiddenRails)
-        if sections.isEmpty {
+        let sections = model.visibleSections(
+            hiding: app.settings.hiddenRails,
+            order: app.settings.categoryOrder
+        )
+        let resume = app.settings.hiddenRails.contains(ContinueWatching.title)
+            ? []
+            : ContinueWatching.points(from: app.history)
+        if sections.isEmpty && resume.isEmpty {
             ContentUnavailableView(
                 "Every rail is hidden",
                 systemImage: "rectangle.stack.slash",
@@ -68,6 +79,9 @@ struct HomeScreen: View {
         } else {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: Layout.spacing6) {
+                    if !resume.isEmpty {
+                        continueWatching(resume)
+                    }
                     if let featured = sections.first?.items.first {
                         hero(featured)
                     }
@@ -78,6 +92,72 @@ struct HomeScreen: View {
                 .padding(.vertical, Layout.spacing4)
             }
         }
+    }
+
+    /// The app's own Continue Watching rail.
+    ///
+    /// A resume row has to open the title at the saved position, which a
+    /// catalogue rail cannot do — it only carries a subject. It is also the one
+    /// home row that cannot disappear with a provider session, because the
+    /// points are stored on the device.
+    private func continueWatching(_ points: [ResumePoint]) -> some View {
+        VStack(alignment: .leading, spacing: Layout.spacing3) {
+            RailHeader(title: ContinueWatching.title)
+
+            ScrollView(.horizontal) {
+                LazyHStack(spacing: Layout.spacing3) {
+                    ForEach(points) { point in
+                        NavigationLink(value: Route.player(PlaybackRequest(resume: point))) {
+                            VStack(alignment: .leading, spacing: Layout.spacing1) {
+                                RemoteImage(url: posterURL(point.poster))
+                                    .frame(width: 132, height: 198)
+                                    .clipped()
+                                    .clipShape(
+                                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                    )
+                                    .overlay(alignment: .bottom) {
+                                        ProgressView(value: point.progress)
+                                            .tint(theme.brand.color)
+                                    }
+
+                                Text(point.title)
+                                    .font(Typography.rowTitle)
+                                    .foregroundStyle(theme.textPrimary.color)
+                                    .lineLimit(1)
+
+                                if let label = point.episodeLabel {
+                                    Text(label)
+                                        .font(Typography.metadata)
+                                        .foregroundStyle(theme.textSecondary.color)
+                                } else if let remaining = point.remainingText {
+                                    Text(remaining)
+                                        .font(Typography.metadata)
+                                        .foregroundStyle(theme.textSecondary.color)
+                                }
+                            }
+                            .frame(width: 132, alignment: .leading)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(resumeLabel(point))
+                    }
+                }
+                .padding(.horizontal, Layout.spacing4)
+            }
+            .scrollIndicators(.hidden)
+            .scrollClipDisabled()
+        }
+    }
+
+    private func resumeLabel(_ point: ResumePoint) -> String {
+        if let label = point.episodeLabel {
+            return "Resume \(point.title), \(label)"
+        }
+        return "Resume \(point.title)"
+    }
+
+    private func posterURL(_ poster: String?) -> URL? {
+        guard let poster, !poster.isEmpty else { return nil }
+        return URL(string: poster.hasPrefix("//") ? "https:" + poster : poster)
     }
 
     /// The lead title of the first visible rail. Nothing renders when the rail

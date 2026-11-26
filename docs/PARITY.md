@@ -11,10 +11,13 @@ Legend: **✅** shipped · **🟡** partial / different behaviour · **⬜** mis
 | Source picker (Built-in / StreamHype / Gateway / Demo) | ✅ | ✅ | Android keeps the previous catalogue on screen while switching |
 | Provider switch keeps navigation | ✅ | ✅ | Screens re-key on `repositoryGeneration` |
 | Home rails + featured | ✅ | ✅ | |
+| Home: Continue Watching rail | ✅ | ✅ | App-owned: built from the device's resume points, newest first, one row per title, and resumable only. A provider session cannot remove it. Listed as a flag in Manage categories, so it can be hidden and re-enabled |
+| Home rail order + hidden rails | ✅ | ✅ | The saved Manage categories order now applies on Home on both platforms (it used to be stored but ignored) |
 | Home pull-to-refresh | ✅ | ✅ | iOS `.refreshable`; Android `PullToRefreshBox` — the reload icon is gone |
 | Search + suggestions | ✅ | ✅ | |
 | Detail: seasons, episodes, dub switch, download | ✅ | ✅ | Per-episode download button on both |
 | Downloads: queue, pause/resume, local playback | ✅ | ✅ | Android `DownloadService` (foreground dataSync) |
+| Downloads: grouping by status, episode, or none | ✅ | ✅ | Episode groups into one section per show, episodes in S/E order; the chosen sort only breaks ties within an episode |
 | Progressive playback of an in-progress download | ✅ | ⬜ | iOS: loopback range server over `.part`; readiness no longer depends on a known total size; Android plays only finished files — T-032 |
 | A finished download starts without a provider round trip | ✅ | ✅ | Both check the queue first and open the file; Android used to ask the provider first, so a downloaded episode waited and failed offline |
 | Download quality choice before queueing | ✅ | ✅ | iOS resolves the episode's ladder and shows it in a sheet; Android `DownloadQualityDialog` |
@@ -23,7 +26,8 @@ Legend: **✅** shipped · **🟡** partial / different behaviour · **⬜** mis
 | History | ✅ | ✅ | |
 | Watchlist | ✅ | ✅ | |
 | Manage categories | ✅ | ✅ | |
-| Settings (source, TMDB key, playback prefs, about) | ✅ | ✅ | |
+| Settings (source, TMDB key, playback prefs, about) | ✅ | ✅ | Version row: iOS shows a checkmark for 1.5s after copying instead of replacing the version with "Copied" forever; Android already used a toast |
+| Screen re-entry keeps loaded content | ✅ | ✅ | Detail / Watchlist / History load once per holder and only refresh on pull, so leaving and returning no longer blanks the page behind a spinner |
 | Docs | ✅ | ✅ | |
 | Lab: gate previews + gateway version probe | ✅ | ✅ | |
 | Feature tracking (local registry + screen) | ✅ | ✅ | Same feature ids on both |

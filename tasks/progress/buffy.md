@@ -351,3 +351,29 @@ the entire prior history; `make release-dry-run` shows the same section.
 - 2026-11-26T14:50:55.133Z — updated T-040: make changelog preview + AGENTS.md contract + range fix; beta.3 recorded (build 133) and installed on iPhone 00008101-000530913442001E via make dev-ios
 - 2026-11-26T14:50:55.180Z — done T-040
 - 2026-11-26T14:50:55.227Z — updated T-038: installed 0.0.1-beta.3 (133, 9734005) on the connected iPhone with make dev-ios --usb; subtitle behaviour on device still to be confirmed
+- 2026-11-26T16:11:01.113Z — claimed T-041 — Fix beta.3 UI regressions: episode download grouping, stuck Copied label, app-owned Continue Watching rail, cached screen loads (iOS + Android)
+- 2026-11-26T16:11:01.163Z — updated T-041: iOS: episode grouping, transient copy checkmark, app-owned Continue Watching (hidden/ordered), loadIfNeeded on Detail/Watchlist/History; 449 core tests green, xtool build clean
+- 2026-11-26T16:11:01.213Z — updated T-041: Android parity: EPISODE grouping, Continue Watching rail + Manage Categories flag, saved rail order applied on Home; unit tests + assembleDebug green
+- 2026-11-26T16:11:01.288Z — done T-041
+
+## 2026-11-26 — beta.3 UI regressions (T-041)
+
+Reported: downloads lost grouping, Settings version row stuck on "Copied", Home lost Continue
+Watching, and every screen re-entry refetched the catalogue behind a spinner.
+
+- Downloads: `DownloadGrouping` gained `.episode` on both platforms — one section per show,
+  episodes in S/E order, the chosen sort only breaking ties inside an episode.
+- Settings (iOS): copying the version now shows a checkmark for 1.5s and leaves the version in
+  place; the label used to be swapped for "Copied" and never restored. Android already toasted.
+- Continue Watching is app-owned on both platforms: built from the device's resume points
+  (newest first, one row per title, resumable only), titled with the same string Manage Categories
+  stores as the flag. Neither platform ever synthesised it before — it only existed when a provider
+  happened to return it, which is why it vanished.
+- Rail order: `visibleSections` filtered hidden rails but ignored the saved order, so reordering in
+  Manage Categories did nothing. Both now apply it, appending rails the order does not know.
+- Re-entry: Detail / Watchlist / History now `loadIfNeeded()` and only blank the page when there is
+  no content yet; pull-to-refresh still forces a reload. Home already did this.
+
+Verification: iOS `swift test` 449 tests / 67 suites green, `xtool dev build` clean; Android
+`:app:testDebugUnitTest :app:assembleDebug` green (new `ContinueWatchingTest`). Device behaviour
+still needs a look on the connected iPhone.

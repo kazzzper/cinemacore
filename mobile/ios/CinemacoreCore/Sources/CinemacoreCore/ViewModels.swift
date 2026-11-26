@@ -29,7 +29,10 @@ public final class HomeViewModel {
 
     public func load() async {
         guard !state.isLoading else { return }
-        state = .loading
+        // Keep what is on screen while a refresh runs: replacing it with the
+        // skeleton made every pull-to-refresh look like a launch, and made a
+        // tab switch that re-ran this feel like a cold start.
+        if state.value == nil { state = .loading }
         do {
             let page = try await repository.home()
             loadedOnce = true
@@ -39,9 +42,55 @@ public final class HomeViewModel {
         }
     }
 
-    /// Rails the user hid in Settings are filtered out before rendering.
-    public func visibleSections(hiding hidden: Set<String>) -> [Section] {
-        (state.value?.sections ?? []).filter { !hidden.contains($0.title) }
+    /// Rails the user hid in Settings are filtered out before rendering, and
+    /// the saved order wins over the provider's.
+    ///
+    /// `order` is a Manage Categories flag, so it has to reach the screen: the
+    /// screen used to filter but never reorder, which made a rail "moved" in
+    /// Settings come back in the provider's position.
+    public func visibleSections(hiding hidden: Set<String>, order: [String] = []) -> [Section] {
+        let visible = (state.value?.sections ?? []).filter { !hidden.contains($0.title) }
+        guard !order.isEmpty else { return visible }
+        let rank = Dictionary(
+            uniqueKeysWithValues: order.enumerated().map { ($1, $0) }
+        )
+        return visible.enumerated()
+            .sorted { lhs, rhs in
+                // A rail the provider added later is appended in its own order
+                // rather than jumping above saved ones.
+                let left = rank[lhs.element.title] ?? (order.count + lhs.offset)
+                let right = rank[rhs.element.title] ?? (order.count + rhs.offset)
+                return left == right ? lhs.offset < rhs.offset : left < right
+            }
+            .map(\.element)
+    }
+}
+
+/// The app's own "Continue Watching" rail.
+///
+/// The home page is the provider's payload, and a provider may stop returning
+/// a continue row (a new session, a tokenless guest, a renamed rail) — which is
+/// how the row disappeared from a screen that had it a minute earlier. Resume
+/// points live on the device, so the app owns this rail rather than depending on
+/// the catalogue for it. `ContinueWatching.title` is also the flag name Manage
+/// Categories stores, so the row can still be hidden and enabled like any other.
+public enum ContinueWatching {
+    public static let title = "Continue Watching"
+
+    /// Newest first, one row per title, and only points worth resuming.
+    ///
+    /// One row per *title* keeps a binge from filling the rail with the same
+    /// show; the resume point is the latest episode, which is what "continue"
+    /// means there.
+    public static func points(from history: [ResumePoint], limit: Int = 12) -> [ResumePoint] {
+        var seen = Set<String>()
+        return Array(
+            history
+                .filter(\.isResumable)
+                .sorted { $0.updatedAt > $1.updatedAt }
+                .filter { seen.insert($0.subjectID).inserted }
+                .prefix(max(limit, 0))
+        )
     }
 }
 
@@ -140,9 +189,18 @@ public final class DetailViewModel {
 
     public var isSeries: Bool { subject.isSeries }
 
+    private var loadedOnce = false
+
+    /// Loads on first appearance only, so returning from the player does not
+    /// refetch the episode tree and blank the page behind a spinner.
+    public func loadIfNeeded() async {
+        guard !loadedOnce else { return }
+        await load()
+    }
+
     public func load() async {
         guard !state.isLoading else { return }
-        state = .loading
+        if state.value == nil { state = .loading }
         do {
             // Sequential on purpose: the episode tree is only fetched when the
             // title is actually a series, which an `async let` would defeat by
@@ -151,6 +209,7 @@ public final class DetailViewModel {
             // `any Error`.
             let subject = try await repository.detail(id: subject.id)
             let tree = subject.isSeries ? try await repository.seasons(subjectID: subject.id) : []
+            loadedOnce = true
             state = .loaded(SubjectDetail(subject: subject, seasons: tree))
             selectDefaultEpisode()
         } catch {
@@ -191,14 +250,23 @@ public final class DetailViewModel {
 public final class WatchlistViewModel {
     public private(set) var state: LoadState<[WatchlistEntry]> = .idle
     private let library: any LibraryStoring
+    private var loadedOnce = false
 
     public init(library: any LibraryStoring) {
         self.library = library
     }
 
+    /// A tab switch is not a reason to show the spinner over a list that has
+    /// not changed; the local store is already the source of truth.
+    public func loadIfNeeded() async {
+        guard !loadedOnce else { return }
+        await load()
+    }
+
     public func load() async {
-        state = .loading
+        if state.value == nil { state = .loading }
         let entries = await library.watchlist()
+        loadedOnce = true
         state = entries.isEmpty ? .empty : .loaded(entries)
     }
 
@@ -218,14 +286,23 @@ public final class WatchlistViewModel {
 public final class HistoryViewModel {
     public private(set) var state: LoadState<[ResumePoint]> = .idle
     private let library: any LibraryStoring
+    private var loadedOnce = false
 
     public init(library: any LibraryStoring) {
         self.library = library
     }
 
+    /// Same rule as the watchlist: returning to the tab keeps the rows on
+    /// screen instead of flashing a loading state for an on-disk read.
+    public func loadIfNeeded() async {
+        guard !loadedOnce else { return }
+        await load()
+    }
+
     public func load() async {
-        state = .loading
+        if state.value == nil { state = .loading }
         let points = await library.history()
+        loadedOnce = true
         state = points.isEmpty ? .empty : .loaded(points)
     }
 

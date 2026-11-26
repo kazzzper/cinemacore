@@ -424,6 +424,27 @@ private fun DownloadsContent(
                         )
                     }
                 }
+
+            // One section per show, episodes in transmission order: the sort
+            // only breaks ties between two downloads of the same episode.
+            DownloadGrouping.EPISODE -> ordered
+                .groupBy { it.subjectId }
+                .values
+                .sortedBy { it.first().title.lowercase() }
+                .map { group ->
+                    DownloadSection(
+                        key = "episode-${group.first().subjectId}",
+                        status = null,
+                        title = group.first().title,
+                        items = group.sortedWith(
+                            compareBy(
+                                { it.season ?: 0 },
+                                { it.episode ?: 0 },
+                                { it.id },
+                            ),
+                        ),
+                    )
+                }
         }
     }
     val showIds = allItems
@@ -451,11 +472,14 @@ private fun DownloadsContent(
             ),
         ) {
             sections.forEach { section ->
-                val status = section.status
-                if (status != null) {
+                if (section.status != null || section.title != null) {
                     item(key = "section-${section.key}") {
                         Text(
-                            text = statusLabel(status),
+                            text = if (section.status != null) {
+                                statusLabel(section.status)
+                            } else {
+                                section.title.orEmpty()
+                            },
                             style = MaterialTheme.typography.titleSmall,
                             color = CinemaColors.TextPrimary,
                             modifier = Modifier.padding(
@@ -893,6 +917,7 @@ private fun groupLabel(grouping: DownloadGrouping): String = stringResource(
     when (grouping) {
         DownloadGrouping.NONE -> R.string.downloads_group_none
         DownloadGrouping.STATUS -> R.string.downloads_group_status
+        DownloadGrouping.EPISODE -> R.string.downloads_group_episode
     },
 )
 
@@ -1002,4 +1027,5 @@ private data class DownloadSection(
     val key: String,
     val status: DownloadStatus?,
     val items: List<DownloadItem>,
+    val title: String? = null,
 )

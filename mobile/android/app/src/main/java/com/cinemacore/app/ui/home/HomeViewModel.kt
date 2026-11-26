@@ -61,9 +61,31 @@ class HomeViewModel(private val repository: CatalogRepository) : ViewModel() {
         }
     }
 
-    /** Rails the viewer hid in Settings never reach the composition. */
-    fun visibleSections(hidden: Collection<String>): List<Section> =
-        state.valueOrNull?.sections?.filterNot { hidden.contains(it.title) }.orEmpty()
+    /**
+     * Rails the viewer hid in Settings never reach the composition, and the
+     * saved Manage Categories order wins over the provider's.
+     *
+     * The order used to be stored but never read here, so a rail "moved" in
+     * Settings came back in the catalogue's position.
+     */
+    fun visibleSections(
+        hidden: Collection<String>,
+        order: List<String> = emptyList(),
+    ): List<Section> {
+        val visible = state.valueOrNull?.sections
+            ?.filterNot { hidden.contains(it.title) }
+            .orEmpty()
+        if (order.isEmpty()) return visible
+        val rank = order.withIndex().associate { (index, title) -> title to index }
+        return visible.withIndex()
+            .sortedWith(
+                compareBy(
+                    { rank[it.value.title] ?: (order.size + it.index) },
+                    { it.index },
+                ),
+            )
+            .map { it.value }
+    }
 
     companion object {
         fun factory(repository: CatalogRepository): ViewModelProvider.Factory =

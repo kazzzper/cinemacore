@@ -50,13 +50,16 @@ struct HistoryScreen: View {
             titleVisibility: .visible
         ) {
             Button("Clear History", role: .destructive) {
-                Task { await model.clear() }
+                Task {
+                    await model.clear()
+                    await app.reloadHistory()
+                }
             }
         } message: {
             Text("Resume points for every title are removed. This cannot be undone.")
         }
         .refreshable { await model.load() }
-        .task { await model.load() }
+        .task { await model.loadIfNeeded() }
     }
 
     private func row(_ point: ResumePoint) -> some View {
@@ -92,7 +95,12 @@ struct HistoryScreen: View {
             .buttonStyle(.plain)
 
             Button {
-                Task { await model.remove(id: point.id) }
+                Task {
+                    await model.remove(id: point.id)
+                    // The Home rail draws from the app's copy of history, so an
+                    // edit here has to reach it immediately.
+                    await app.reloadHistory()
+                }
             } label: {
                 Image(systemName: "xmark.circle")
                     .foregroundStyle(theme.textSecondary.color)
@@ -104,21 +112,8 @@ struct HistoryScreen: View {
         .frame(minHeight: Layout.minimumTarget)
     }
 
-    /// Rebuilds the minimal subject a resume needs; the player re-resolves the
-    /// full title from the provider, so only the history fields are required.
     private func playbackRequest(for point: ResumePoint) -> PlaybackRequest {
-        let subject = Subject(
-            id: point.subjectID,
-            title: point.title,
-            poster: point.poster,
-            kind: point.episode != nil ? "series" : "movie"
-        )
-        let episode = point.season.flatMap { season in
-            point.episode.map { number in
-                Episode(subjectID: point.subjectID, season: season, number: number)
-            }
-        }
-        return PlaybackRequest(subject: subject, season: point.season, episode: episode)
+        PlaybackRequest(resume: point)
     }
 
     private func posterURL(_ point: ResumePoint) -> URL? {

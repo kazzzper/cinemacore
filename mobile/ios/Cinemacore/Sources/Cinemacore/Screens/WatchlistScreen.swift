@@ -61,6 +61,6 @@ struct WatchlistScreen: View {
             Text("Every saved title is removed. This cannot be undone.")
         }
         .refreshable { await model.load() }
-        .task { await model.load() }
+        .task { await model.loadIfNeeded() }
     }
 }

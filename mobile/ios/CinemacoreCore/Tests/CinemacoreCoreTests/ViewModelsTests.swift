@@ -329,6 +329,68 @@ struct HomeViewModelTests {
             ).isEmpty
         )
     }
+
+    @Test("the saved rail order from Manage Categories reaches the screen")
+    func visibleSectionsOrder() async {
+        let repository = MockCatalogRepository()
+        repository.stubHome(page(["Continue Watching", "Trending Now", "New Releases"]))
+        let viewModel = HomeViewModel(repository: repository)
+        await viewModel.load()
+
+        // Saved rails come first in their saved order; a rail the provider adds
+        // later keeps its own place after them instead of jumping the queue.
+        #expect(
+            viewModel.visibleSections(hiding: [], order: ["New Releases", "Trending Now"])
+                .map(\.title) == ["New Releases", "Trending Now", "Continue Watching"]
+        )
+        #expect(
+            viewModel.visibleSections(
+                hiding: ["Trending Now"],
+                order: ["New Releases", "Trending Now"]
+            ).map(\.title) == ["New Releases", "Continue Watching"]
+        )
+    }
+}
+
+@Suite("Continue Watching rail")
+struct ContinueWatchingTests {
+    private func point(
+        _ id: String,
+        at seconds: TimeInterval,
+        position: Double = 30,
+        duration: Double = 100
+    ) -> ResumePoint {
+        ResumePoint(
+            subjectID: id,
+            title: id.uppercased(),
+            season: 1,
+            episode: 1,
+            positionSeconds: position,
+            durationSeconds: duration,
+            updatedAt: Date(timeIntervalSince1970: seconds)
+        )
+    }
+
+    @Test("newest first, one row per title, only points worth resuming")
+    func ordering() {
+        let points = ContinueWatching.points(from: [
+            point("a", at: 1),
+            point("a", at: 3),
+            point("b", at: 2),
+            // Both are effectively unwatchable: one never moved, the other is
+            // past the end guard. Neither may take a row from a real resume.
+            point("c", at: 4, position: 0),
+            point("d", at: 5, position: 99),
+        ])
+
+        #expect(points.map(\.subjectID) == ["a", "b"])
+        #expect(points.first?.updatedAt == Date(timeIntervalSince1970: 3))
+    }
+
+    @Test("an empty history has no rail")
+    func empty() {
+        #expect(ContinueWatching.points(from: []).isEmpty)
+    }
 }
 
 // MARK: - Search
@@ -545,6 +607,21 @@ struct DetailViewModelTests {
         #expect(repository.detailCallCount == 1)
         #expect(repository.seasonsCallCount == 1)
         #expect(repository.seasonsQueries == ["series"])
+    }
+
+    @Test("returning to the page does not refetch the title")
+    func loadIfNeededCaches() async {
+        let repository = MockCatalogRepository()
+        repository.stubDetail(series)
+        repository.stubSeasons([season(1, episodes: 1)])
+        let viewModel = DetailViewModel(subject: series, repository: repository)
+
+        await viewModel.loadIfNeeded()
+        await viewModel.loadIfNeeded()
+        await viewModel.loadIfNeeded()
+
+        #expect(repository.detailCallCount == 1)
+        #expect(repository.seasonsCallCount == 1)
     }
 
     @Test("the default season is the first in the tree, not always season 1")

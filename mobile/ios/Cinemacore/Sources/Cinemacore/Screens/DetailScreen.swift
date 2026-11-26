@@ -104,7 +104,9 @@ struct DetailScreen: View {
         }
         .task {
             isInWatchlist = app.isInWatchlist(subject.id)
-            await model.load()
+            // Returning from the player used to refetch the title and blank the
+            // page behind a spinner; the loaded page is still valid.
+            await model.loadIfNeeded()
         }
         // A source switch replaces the catalogue underneath this page. Rebuilding
         // the view model against the new repository (and reloading) is what keeps

@@ -38,6 +38,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.cinemacore.app.R
 import com.cinemacore.app.domain.CinemacoreError
+import com.cinemacore.app.domain.ContinueWatching
 import com.cinemacore.app.domain.LoadState
 import com.cinemacore.app.ui.CinemacoreViewModel
 import com.cinemacore.app.ui.components.StateView
@@ -71,7 +72,13 @@ fun ManageCategoriesScreen(
     LaunchedEffect(app.repository, reloadToken) {
         state = LoadState.Loading
         try {
-            val titles = app.repository.home().sections.map { it.title }.distinct()
+            // The app-owned Continue Watching rail is a flag too, and it has to
+            // be listed even though no provider returns it — otherwise hiding
+            // it once would leave no way to turn it back on.
+            val titles = listOf(ContinueWatching.TITLE) +
+                app.repository.home().sections.map { it.title }
+                    .filter { it != ContinueWatching.TITLE }
+                    .distinct()
             val saved = app.settings.railOrder.filter { it in titles }
             val merged = saved + titles.filter { it !in saved }
             hidden = app.settings.hiddenRails.filter { it in titles }.toSet()

@@ -20,6 +20,12 @@ final class AppModel {
     private(set) var sourceNote = ""
     private(set) var bootstrapped = false
     private(set) var watchlistIDs: Set<String> = []
+    /// Resume points, newest first, mirrored for the Home rail.
+    ///
+    /// Home used to depend on the provider returning a "Continue Watching" row.
+    /// A tokenless session or a renamed rail made that row vanish; the points
+    /// are already on disk, so the app owns the rail instead.
+    private(set) var history: [ResumePoint] = []
     /// The download queue, mirrored from the engine so SwiftUI can observe a
     /// plain array instead of an `AsyncStream`.
     private(set) var downloads: [DownloadItem] = []
@@ -109,6 +115,7 @@ final class AppModel {
         }
 
         await refreshWatchlistIDs()
+        await reloadHistory()
         await startDownloads()
         bootstrapped = true
     }
@@ -262,6 +269,16 @@ final class AppModel {
 
     func record(_ point: ResumePoint) async {
         await library.record(point)
+        await reloadHistory()
+    }
+
+    /// Re-reads the resume points the Home rail draws from.
+    ///
+    /// The read is a local document, so this is cheap enough to run whenever
+    /// Home appears; it is what keeps the rail honest after history is edited
+    /// on another screen.
+    func reloadHistory() async {
+        history = await library.history()
     }
 
     func resumePoint(for id: String) async -> ResumePoint? {

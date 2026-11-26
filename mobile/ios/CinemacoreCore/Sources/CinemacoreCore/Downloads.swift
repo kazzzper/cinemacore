@@ -251,7 +251,7 @@ public struct DownloadSortOrder: Codable, Hashable, Sendable {
 
 /// How the Downloads list is split into sections.
 public enum DownloadGrouping: String, Codable, Sendable, CaseIterable, Identifiable {
-    case none, title, status
+    case none, title, status, episode
 
     public var id: String { rawValue }
 
@@ -260,6 +260,10 @@ public enum DownloadGrouping: String, Codable, Sendable, CaseIterable, Identifia
         case .none: "None"
         case .title: "Title"
         case .status: "Status"
+        // One section per show, with its episodes in transmission order — what
+        // a viewer means by "group these by episode", rather than by the
+        // user-chosen sort inside a season.
+        case .episode: "Episode"
         }
     }
 }
@@ -326,6 +330,40 @@ public enum DownloadList {
                         items: sorted(members, by: order)
                     )
                 }
+
+        case .episode:
+            var buckets: [String: [DownloadItem]] = [:]
+            var titles: [String: String] = [:]
+            for item in items {
+                buckets[item.subjectID, default: []].append(item)
+                titles[item.subjectID] = titles[item.subjectID] ?? item.title
+            }
+            return buckets.keys
+                .sorted {
+                    titleOrder(titles[$0] ?? $0, titles[$1] ?? $1) == .orderedAscending
+                }
+                .map { subjectID in
+                    DownloadSection(
+                        id: "episode-\(subjectID)",
+                        title: titles[subjectID] ?? subjectID,
+                        items: inEpisodeOrder(buckets[subjectID] ?? [], by: order)
+                    )
+                }
+        }
+    }
+
+    /// Season then episode, ascending, whatever the chosen sort: the episodes
+    /// of a show only read as a list in transmission order. The user's sort
+    /// still decides between two downloads of the *same* episode (qualities).
+    private static func inEpisodeOrder(
+        _ items: [DownloadItem],
+        by order: DownloadSortOrder
+    ) -> [DownloadItem] {
+        items.sorted { lhs, rhs in
+            if lhs.season != rhs.season { return (lhs.season ?? 0) < (rhs.season ?? 0) }
+            if lhs.episode != rhs.episode { return (lhs.episode ?? 0) < (rhs.episode ?? 0) }
+            let forward = precedes(lhs, rhs, by: order.key)
+            return order.ascending ? forward : !forward
         }
     }
 

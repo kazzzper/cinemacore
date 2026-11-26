@@ -22,6 +22,7 @@
     <string name="downloads_sort_status">Status</string>
     <string name="downloads_group_none">Ungrouped</string>
     <string name="downloads_group_status">Group by status</string>
+    <string name="downloads_group_episode">Group by episode</string>
     <string name="downloads_status_queued">Queued</string>
     <string name="downloads_status_downloading">Downloading</string>
     <string name="downloads_status_paused">Paused</string>

@@ -72,7 +72,11 @@ struct ManageCategoriesScreen: View {
         errorMessage = nil
         do {
             let page = try await app.repository.home()
-            let titles = page.sections.map(\.title)
+            // The app-owned rail is a flag too, and it has to be listed even
+            // though no provider returns it — otherwise hiding it once would
+            // leave no way to turn it back on.
+            let titles = [ContinueWatching.title]
+                + page.sections.map(\.title).filter { $0 != ContinueWatching.title }
             // A saved order wins, but rails the provider added since are appended
             // so nothing becomes unreachable.
             let saved = app.settings.categoryOrder.filter(titles.contains)

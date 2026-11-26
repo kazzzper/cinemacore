@@ -518,6 +518,17 @@
       "acceptance": "make changelog prints the section the next release records; scripts/changelog treats --range <tag> as tag..HEAD; AGENTS.md documents VERSION/CHANGELOG/dev-ios; a release records exactly one CHANGELOG section",
       "updatedAt": "2026-11-26T14:50:55.180Z",
       "links": []
+    },
+    {
+      "id": "T-041",
+      "title": "Fix beta.3 UI regressions: episode download grouping, stuck Copied label, app-owned Continue Watching rail, cached screen loads (iOS + Android)",
+      "status": "done",
+      "module": "mobile",
+      "owner": "buffy",
+      "deps": [],
+      "acceptance": "Downloads group by episode; Settings copy confirmation resets; Continue Watching is app-owned from ResumePoints/history, respects hiddenRails and rail order; Detail/Watchlist/History keep loaded state on re-entry; iOS tests and Android unit tests + assembleDebug green; parity docs updated",
+      "updatedAt": "2026-11-26T16:11:01.286Z",
+      "links": []
     }
   ]
 }
