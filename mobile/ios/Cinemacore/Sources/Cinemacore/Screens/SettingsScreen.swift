@@ -129,13 +129,13 @@ struct SettingsScreen: View {
                     }
                     Button {
                         UIPasteboard.general.string = version.display
-                        withAnimation(.easeInOut(duration: 0.18)) { copiedVersion = true }
-                        // The confirmation is a moment, not a new label: the
-                        // row used to stay on "Copied" for the life of the
-                        // screen, hiding the version it exists to show.
+                        // A plain confirmation, no motion: the row used to stay
+                        // on "Copied" for the life of the screen, hiding the
+                        // version it exists to show.
+                        copiedVersion = true
                         Task {
                             try? await Task.sleep(for: .seconds(1.5))
-                            withAnimation(.easeInOut(duration: 0.18)) { copiedVersion = false }
+                            copiedVersion = false
                         }
                     } label: {
                         LabeledContent {
@@ -143,18 +143,14 @@ struct SettingsScreen: View {
                                 Text(version.display)
                                     .monospacedDigit()
                                     .foregroundStyle(theme.textSecondary.color)
-                                Group {
-                                    if copiedVersion {
-                                        Label("Copied", systemImage: "checkmark")
-                                            .font(Typography.badge)
-                                            .foregroundStyle(theme.brand.color)
-                                            .transition(.opacity.combined(with: .move(edge: .trailing)))
-                                    } else {
-                                        Image(systemName: "doc.on.doc")
-                                            .font(Typography.badge)
-                                            .foregroundStyle(theme.textSecondary.color)
-                                            .transition(.opacity)
-                                    }
+                                if copiedVersion {
+                                    Label("Copied", systemImage: "checkmark")
+                                        .font(Typography.badge)
+                                        .foregroundStyle(theme.brand.color)
+                                } else {
+                                    Image(systemName: "doc.on.doc")
+                                        .font(Typography.badge)
+                                        .foregroundStyle(theme.textSecondary.color)
                                 }
                             }
                         } label: {
@@ -163,7 +159,6 @@ struct SettingsScreen: View {
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .sensoryFeedback(.success, trigger: copiedVersion) { _, copied in copied }
                     .accessibilityLabel(copiedVersion ? "Version copied" : "Copy version")
                 }
 

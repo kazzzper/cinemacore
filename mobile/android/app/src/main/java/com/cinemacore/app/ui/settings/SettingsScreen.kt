@@ -489,23 +489,21 @@ fun SettingsScreen(
                             style = MaterialTheme.typography.bodyMedium,
                             color = CinemaColors.TextSecondary,
                         )
-                        androidx.compose.animation.AnimatedVisibility(visible = copiedVersion) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(
-                                    imageVector = Icons.Filled.Check,
-                                    contentDescription = null,
-                                    tint = CinemaColors.Brand,
-                                    modifier = Modifier
-                                        .padding(start = CinemaSpacing.x1)
-                                        .size(16.dp),
-                                )
-                                Text(
-                                    text = stringResource(R.string.settings_about_version_copied),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = CinemaColors.Brand,
-                                    modifier = Modifier.padding(start = 2.dp),
-                                )
-                            }
+                        if (copiedVersion) {
+                            Icon(
+                                imageVector = Icons.Filled.Check,
+                                contentDescription = null,
+                                tint = CinemaColors.Brand,
+                                modifier = Modifier
+                                    .padding(start = CinemaSpacing.x1)
+                                    .size(16.dp),
+                            )
+                            Text(
+                                text = stringResource(R.string.settings_about_version_copied),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = CinemaColors.Brand,
+                                modifier = Modifier.padding(start = 2.dp),
+                            )
                         }
                     }
                 }
