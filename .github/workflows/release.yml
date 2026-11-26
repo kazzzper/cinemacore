@@ -11,6 +11,13 @@ on:
       - main
   pull_request:
   workflow_dispatch:
+    inputs:
+      # The simulator lane is tags-only, so this is the one way to exercise the
+      # Darwin paths against a branch without cutting a tag.
+      ios-sim-tests:
+        description: "Run the iOS Simulator suite too (macOS minutes)"
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -155,6 +162,17 @@ jobs:
         run: |
           xcodebuild -list -project Cinemacore.xcodeproj
           xcodebuild -showdestinations -project Cinemacore.xcodeproj -scheme Cinemacore | head -20
+      - name: iOS unit tests (slow lane, on request)
+        if: ${{ inputs.ios-sim-tests }}
+        run: IOS_RESULT_BUNDLE="$RUNNER_TEMP/ios-tests.xcresult" ./scripts/ios-test
+      - name: Keep the test bundle if the suite failed
+        if: ${{ failure() && inputs.ios-sim-tests }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: ios-tests-xcresult
+          path: ${{ runner.temp }}/ios-tests.xcresult
+          if-no-files-found: ignore
+          retention-days: 7
       - name: Build unsigned iOS artifacts
         run: ./scripts/ios-build
       - uses: actions/upload-artifact@v7

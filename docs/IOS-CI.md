@@ -81,7 +81,9 @@ Linux gate covers the logic; the simulator covers the SDK.
    `./scripts/ios-test`, then `./scripts/ios-build` (unsigned device `.ipa` +
    ad-hoc-signed simulator app), then the artifacts into the GitHub Release.
 3. `ios-verify` (everything else): `xcodebuild -list` / `-showdestinations`,
-   then `./scripts/ios-build`, and uploads the result.
+   then `./scripts/ios-build`, and uploads the result. A manual dispatch can
+   tick `ios-sim-tests` to run the simulator suite here too — the only way to
+   exercise the Darwin lane on a branch without cutting a tag.
 
 ### The simulator lane
 
