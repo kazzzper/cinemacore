@@ -15,6 +15,7 @@
 - **ios:** test the package on linux and keep the simulator for tags
 - **release:** verify the iOS build on every non-tag run
 - **ios:** build releases with Xcode only
+
 ## [0.0.1-beta.2] - 2026-11-25
 
 ### Bug Fixes

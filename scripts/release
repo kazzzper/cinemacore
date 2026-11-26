@@ -128,7 +128,9 @@ try {
   const previous = fs.existsSync(changelogPath)
     ? fs.readFileSync(changelogPath, 'utf8').replace(/^# Changelog\s*/, '')
     : '';
-  fs.writeFileSync(changelogPath, `# Changelog\n\n${changelog}${previous.trimStart()}`);
+  // A blank line between sections: the generated section ends with one newline,
+  // and without this the next `## [` heading is read as part of the last list.
+  fs.writeFileSync(changelogPath, `# Changelog\n\n${changelog}\n${previous.trimStart()}`);
 
   git(['add', 'VERSION', 'CHANGELOG.md']);
   git(['commit', '-m', `chore(release): ${tag}`]);
