@@ -193,11 +193,6 @@ private fun HomeContent(
                 NoticeBanner(text = stringResource(R.string.home_hidden_rails_notice))
             }
         }
-        if (resume.isNotEmpty()) {
-            item(key = ContinueWatching.TITLE) {
-                ContinueWatchingRail(points = resume, onPlay = onPlay)
-            }
-        }
         if (featured != null) {
             item(key = "hero-${featured.id}") {
                 Hero(
@@ -205,6 +200,11 @@ private fun HomeContent(
                     onOpenDetail = onOpenDetail,
                     onPlay = onPlay,
                 )
+            }
+        }
+        if (resume.isNotEmpty()) {
+            item(key = ContinueWatching.TITLE) {
+                ContinueWatchingRail(points = resume, onPlay = onPlay)
             }
         }
         itemsIndexed(

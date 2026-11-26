@@ -79,11 +79,11 @@ struct HomeScreen: View {
         } else {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: Layout.spacing6) {
-                    if !resume.isEmpty {
-                        continueWatching(resume)
-                    }
                     if let featured = sections.first?.items.first {
                         hero(featured)
+                    }
+                    if !resume.isEmpty {
+                        continueWatching(resume)
                     }
                     ForEach(sections) { section in
                         RailView(section: section)

@@ -95,11 +95,15 @@ struct SettingsScreen: View {
                 }
 
                 Section("Library") {
-                    NavigationLink(value: Route.history) {
-                        Label("History", systemImage: "clock.arrow.circlepath")
+                    if app.isEnabled(.history) {
+                        NavigationLink(value: Route.history) {
+                            Label("History", systemImage: "clock.arrow.circlepath")
+                        }
                     }
-                    NavigationLink(value: Route.manageCategories) {
-                        Label("Manage Categories", systemImage: "square.grid.2x2")
+                    if app.isEnabled(.categories) {
+                        NavigationLink(value: Route.manageCategories) {
+                            Label("Manage Categories", systemImage: "square.grid.2x2")
+                        }
                     }
                 }
 
@@ -125,21 +129,32 @@ struct SettingsScreen: View {
                     }
                     Button {
                         UIPasteboard.general.string = version.display
-                        copiedVersion = true
+                        withAnimation(.easeInOut(duration: 0.18)) { copiedVersion = true }
                         // The confirmation is a moment, not a new label: the
                         // row used to stay on "Copied" for the life of the
                         // screen, hiding the version it exists to show.
                         Task {
                             try? await Task.sleep(for: .seconds(1.5))
-                            copiedVersion = false
+                            withAnimation(.easeInOut(duration: 0.18)) { copiedVersion = false }
                         }
                     } label: {
                         LabeledContent {
-                            HStack(spacing: Layout.spacing1) {
+                            HStack(spacing: Layout.spacing2) {
                                 Text(version.display)
-                                if copiedVersion {
-                                    Image(systemName: "checkmark")
-                                        .foregroundStyle(theme.brand.color)
+                                    .monospacedDigit()
+                                    .foregroundStyle(theme.textSecondary.color)
+                                Group {
+                                    if copiedVersion {
+                                        Label("Copied", systemImage: "checkmark")
+                                            .font(Typography.badge)
+                                            .foregroundStyle(theme.brand.color)
+                                            .transition(.opacity.combined(with: .move(edge: .trailing)))
+                                    } else {
+                                        Image(systemName: "doc.on.doc")
+                                            .font(Typography.badge)
+                                            .foregroundStyle(theme.textSecondary.color)
+                                            .transition(.opacity)
+                                    }
                                 }
                             }
                         } label: {
@@ -148,6 +163,7 @@ struct SettingsScreen: View {
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
+                    .sensoryFeedback(.success, trigger: copiedVersion) { _, copied in copied }
                     .accessibilityLabel(copiedVersion ? "Version copied" : "Copy version")
                 }
 

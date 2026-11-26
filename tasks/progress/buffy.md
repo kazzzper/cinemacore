@@ -377,3 +377,16 @@ Watching, and every screen re-entry refetched the catalogue behind a spinner.
 Verification: iOS `swift test` 449 tests / 67 suites green, `xtool dev build` clean; Android
 `:app:testDebugUnitTest :app:assembleDebug` green (new `ContinueWatchingTest`). Device behaviour
 still needs a look on the connected iPhone.
+- 2026-11-26T16:59:07.793Z — claimed T-042 — Home/Downloads/flags follow-up: Continue Watching below hero, downloads show→season→episode browser, copy feedback, feature flags gate the shell
+- 2026-11-26T16:59:07.840Z — updated T-042: iOS: Continue Watching moved under hero; grouped downloads drill into DownloadShowScreen (seasons/episodes); animated Copied checkmark; tabs/Settings entries/detail download gated by local feature flags. xtool build clean
+- 2026-11-26T16:59:07.887Z — updated T-042: Android parity: hero-first rail, DownloadShowScreen + TITLE/EPISODE grouping cards, transient Copied label, tabs/Settings/detail download gated, feature toggles refresh the shell. testDebugUnitTest + assembleDebug green
+- 2026-11-26T16:59:07.935Z — done T-042
+
+### Follow-up on the same report (T-042)
+
+- Continue Watching now sits *under* the hero banner on both platforms; it was above it.
+- Grouped downloads are a library, not a longer list: with Title/Episode grouping each show is one card, and opening it goes show → season → episode (new `DownloadShowScreen` on iOS and Android) with play/pause/retry/remove per episode.
+- Version copy feedback is visible again: a "Copied" checkmark animates in for 1.5 s, leaving the version in place (iOS; Android switched its toast to the same inline confirmation).
+- Local feature flags now gate the shell: turning off Search/Watchlist/Downloads removes that tab, History/Manage Categories disappears from Settings, downloads leaves the detail screen, and a tab whose feature is switched off while open falls back to Home. Toggling a flag refreshes the shell immediately.
+
+Verified: iOS `xtool dev build` clean; Android `:app:testDebugUnitTest :app:assembleDebug` green.

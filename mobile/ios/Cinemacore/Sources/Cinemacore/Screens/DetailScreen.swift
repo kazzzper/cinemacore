@@ -263,14 +263,16 @@ struct DetailScreen: View {
             }
             .glassButton(prominent: true)
 
-            Button {
-                startDownload()
-            } label: {
-                Label("Download", systemImage: "arrow.down.circle")
-                    .font(Typography.button)
-                    .frame(maxWidth: .infinity, minHeight: Layout.minimumTarget)
+            if app.isEnabled(.downloads) {
+                Button {
+                    startDownload()
+                } label: {
+                    Label("Download", systemImage: "arrow.down.circle")
+                        .font(Typography.button)
+                        .frame(maxWidth: .infinity, minHeight: Layout.minimumTarget)
+                }
+                .glassButton()
             }
-            .glassButton()
 
             if subject.isSeries, let episode = model.selectedEpisode {
                 Text("S\(episode.season) E\(episode.number)")
@@ -407,7 +409,9 @@ struct DetailScreen: View {
             .simultaneousGesture(TapGesture().onEnded { model.selectEpisode(episode) })
             .accessibilityHint("Plays this episode")
 
-            episodeDownloadButton(episode)
+            if app.isEnabled(.downloads) {
+                episodeDownloadButton(episode)
+            }
         }
         .padding(.horizontal, Layout.spacing4)
     }

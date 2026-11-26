@@ -58,6 +58,14 @@ class CinemacoreViewModel(private val container: AppContainer) : ViewModel() {
     var bootstrapped: Boolean by mutableStateOf(false)
         private set
 
+    /**
+     * The flags this device currently has on. The Feature tracking switches are
+     * real preferences, so the shell reads them: a feature turned off is
+     * removed, not left on screen doing nothing.
+     */
+    var enabledFeatures: Set<Feature> by mutableStateOf(emptySet())
+        private set
+
     var gatewayVersion: String? by mutableStateOf(null)
         private set
 
@@ -69,6 +77,7 @@ class CinemacoreViewModel(private val container: AppContainer) : ViewModel() {
     val player get() = container.player
 
     init {
+        reloadFeatures()
         viewModelScope.launch {
             container.settings.settings.collect { settings = it }
         }
@@ -307,6 +316,15 @@ class CinemacoreViewModel(private val container: AppContainer) : ViewModel() {
             failureReason = result?.message,
         )
     }
+
+    /** Re-reads the local toggles after Settings changes one. */
+    fun reloadFeatures() {
+        viewModelScope.launch {
+            enabledFeatures = features.enabledFeatures().toSet()
+        }
+    }
+
+    fun isEnabled(feature: Feature): Boolean = feature in enabledFeatures
 
     val watchlist: List<LibraryEntry>
         get() = library.watchlist

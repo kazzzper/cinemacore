@@ -15,6 +15,13 @@ final class AppModel {
     /// Local feature telemetry, persisted beside the library so one directory
     /// holds all on-device state.
     let features: FeatureTracker
+    /// The flags this device currently has on.
+    ///
+    /// The Feature tracking switches are real preferences, so the shell has to
+    /// read them: a feature turned off is removed from the app, not left in
+    /// place doing nothing.
+    private(set) var enabledFeatures: Set<Feature> =
+        Set(Feature.allCases.filter(\.isEnabledByDefault))
     private(set) var settings = LibrarySettings()
     /// Human-readable description of where catalog data came from.
     private(set) var sourceNote = ""
@@ -114,6 +121,7 @@ final class AppModel {
             repositoryGeneration += 1
         }
 
+        await reloadEnabledFeatures()
         await refreshWatchlistIDs()
         await reloadHistory()
         await startDownloads()
@@ -286,6 +294,15 @@ final class AppModel {
     }
 
     // MARK: - Settings
+
+    func isEnabled(_ feature: Feature) -> Bool {
+        enabledFeatures.contains(feature)
+    }
+
+    /// Re-reads the local toggles after Settings changes one.
+    func reloadEnabledFeatures() async {
+        enabledFeatures = Set(await features.enabledFeatures())
+    }
 
     func updateSettings(_ transform: @Sendable (inout LibrarySettings) -> Void) async {
         await library.updateSettings(transform)

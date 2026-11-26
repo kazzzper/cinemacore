@@ -17,7 +17,7 @@ Legend: **✅** shipped · **🟡** partial / different behaviour · **⬜** mis
 | Search + suggestions | ✅ | ✅ | |
 | Detail: seasons, episodes, dub switch, download | ✅ | ✅ | Per-episode download button on both |
 | Downloads: queue, pause/resume, local playback | ✅ | ✅ | Android `DownloadService` (foreground dataSync) |
-| Downloads: grouping by status, episode, or none | ✅ | ✅ | Episode groups into one section per show, episodes in S/E order; the chosen sort only breaks ties within an episode |
+| Downloads: grouping by title, status, episode, or none | ✅ | ✅ | Title/Episode show one row per show, which opens its seasons and episodes; the chosen sort only breaks ties within an episode |
 | Progressive playback of an in-progress download | ✅ | ⬜ | iOS: loopback range server over `.part`; readiness no longer depends on a known total size; Android plays only finished files — T-032 |
 | A finished download starts without a provider round trip | ✅ | ✅ | Both check the queue first and open the file; Android used to ask the provider first, so a downloaded episode waited and failed offline |
 | Download quality choice before queueing | ✅ | ✅ | iOS resolves the episode's ladder and shows it in a sheet; Android `DownloadQualityDialog` |
@@ -26,7 +26,8 @@ Legend: **✅** shipped · **🟡** partial / different behaviour · **⬜** mis
 | History | ✅ | ✅ | |
 | Watchlist | ✅ | ✅ | |
 | Manage categories | ✅ | ✅ | |
-| Settings (source, TMDB key, playback prefs, about) | ✅ | ✅ | Version row: iOS shows a checkmark for 1.5s after copying instead of replacing the version with "Copied" forever; Android already used a toast |
+| Settings (source, TMDB key, playback prefs, about) | ✅ | ✅ | Version row: copying shows a transient "Copied" checkmark for 1.5s instead of replacing the version forever |
+| Local feature flags gate the app | ✅ | ✅ | Feature tracking switches are preferences: turning off Search/Watchlist/Downloads removes the tab, History/Manage Categories leaves Settings, and downloads leaves the detail screen. A tab whose feature is switched off while open falls back to Home |
 | Screen re-entry keeps loaded content | ✅ | ✅ | Detail / Watchlist / History load once per holder and only refresh on pull, so leaving and returning no longer blanks the page behind a spinner |
 | Docs | ✅ | ✅ | |
 | Lab: gate previews + gateway version probe | ✅ | ✅ | |

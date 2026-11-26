@@ -95,6 +95,9 @@ fun FeatureTrackingScreen(
                 onToggle = { feature, enabled ->
                     scope.launch {
                         app.features.setEnabled(feature, enabled)
+                        // The shell reads the same flags; refresh it so the tab
+                        // or entry point appears or goes without a relaunch.
+                        app.reloadFeatures()
                         reload()
                     }
                 },

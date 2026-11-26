@@ -21,6 +21,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.MoreVert
@@ -69,6 +70,7 @@ import com.cinemacore.app.domain.Subject
 import com.cinemacore.app.ui.CinemacoreViewModel
 import com.cinemacore.app.ui.components.NoticeBanner
 import com.cinemacore.app.ui.components.RemoteImage
+import com.cinemacore.app.ui.components.RemoteImage
 import com.cinemacore.app.ui.components.StateView
 import com.cinemacore.app.ui.theme.CinemaColors
 import com.cinemacore.app.ui.theme.CinemaShape
@@ -79,6 +81,7 @@ import kotlin.math.roundToInt
 fun DownloadsScreen(
     app: CinemacoreViewModel,
     onOpenDetail: (Subject, Int?) -> Unit,
+    onOpenShow: (String) -> Unit,
     onPlay: (PlaybackRequest) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -140,6 +143,7 @@ fun DownloadsScreen(
                     allItems = items,
                     settings = settings,
                     onOpenDetail = onOpenDetail,
+                    onOpenShow = onOpenShow,
                     onPlay = { item ->
                         onPlay(
                             PlaybackRequest.fromDownload(item).copy(
@@ -386,6 +390,7 @@ private fun DownloadsContent(
     allItems: List<DownloadItem>,
     settings: AppSettings,
     onOpenDetail: (Subject, Int?) -> Unit,
+    onOpenShow: (String) -> Unit,
     onPlay: (DownloadItem) -> Unit,
     onPause: (String) -> Unit,
     onResume: (String) -> Unit,
@@ -410,6 +415,25 @@ private fun DownloadsContent(
             DownloadGrouping.NONE -> listOf(
                 DownloadSection(key = "all", status = null, items = ordered),
             )
+            // Grouping by title is a library, not a longer list: one row per
+            // show, which opens its seasons and episodes.
+            DownloadGrouping.TITLE -> ordered
+                .groupBy { it.subjectId }
+                .values
+                .sortedBy { it.first().title.lowercase() }
+                .map { group ->
+                    DownloadSection(
+                        key = "title-${group.first().subjectId}",
+                        status = null,
+                        title = group.first().title,
+                        items = sortDownloads(
+                            items = group,
+                            key = settings.downloadSortKey,
+                            ascending = settings.downloadSortAscending,
+                        ),
+                    )
+                }
+
             DownloadGrouping.STATUS -> DownloadStatus.entries
                 .sortedBy { it.rank }
                 .mapNotNull { status ->
@@ -471,6 +495,18 @@ private fun DownloadsContent(
                 bottom = CinemaSpacing.x6,
             ),
         ) {
+            if (
+                settings.downloadGrouping == DownloadGrouping.TITLE ||
+                settings.downloadGrouping == DownloadGrouping.EPISODE
+            ) {
+                items(sections, key = { it.key }) { section ->
+                    DownloadShowCard(
+                        section = section,
+                        onClick = { onOpenShow(section.items.first().subjectId) },
+                    )
+                }
+                return@LazyColumn
+            }
             sections.forEach { section ->
                 if (section.status != null || section.title != null) {
                     item(key = "section-${section.key}") {
@@ -904,6 +940,68 @@ private fun DestructiveDialog(
 }
 
 @Composable
+private fun DownloadShowCard(
+    section: DownloadSection,
+    onClick: () -> Unit,
+) {
+    val first = section.items.first()
+    val finished = section.items.count { it.isFinished }
+    val bytes = section.items.sumOf { it.totalBytes }
+    val summary = buildString {
+        append("${section.items.size} episode")
+        if (section.items.size != 1) append('s')
+        append(" · ")
+        append("$finished downloaded")
+        if (bytes > 0) {
+            append(" · ")
+            append(PlaybackPolicy.formatSize(bytes))
+        }
+    }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = CinemaSpacing.screenHorizontal, vertical = CinemaSpacing.x1)
+            .clip(RoundedCornerShape(CinemaShape.medium))
+            .clickable(onClick = onClick)
+            .padding(CinemaSpacing.x2),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(CinemaSpacing.x3),
+    ) {
+        Box(
+            modifier = Modifier
+                .width(56.dp)
+                .height(84.dp)
+                .clip(RoundedCornerShape(CinemaShape.small)),
+        ) {
+            RemoteImage(
+                url = first.poster,
+                modifier = Modifier.fillMaxSize(),
+                contentDescription = null,
+            )
+        }
+        Column(Modifier.weight(1f)) {
+            Text(
+                text = section.title.orEmpty(),
+                style = MaterialTheme.typography.titleSmall,
+                color = CinemaColors.TextPrimary,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = summary,
+                style = MaterialTheme.typography.bodySmall,
+                color = CinemaColors.TextSecondary,
+            )
+        }
+        Icon(
+            imageVector = Icons.Filled.ChevronRight,
+            contentDescription = null,
+            tint = CinemaColors.TextSecondary,
+        )
+    }
+}
+
+@Composable
 private fun sortLabel(key: DownloadSortKey): String = stringResource(
     when (key) {
         DownloadSortKey.ADDED -> R.string.downloads_sort_added
@@ -916,6 +1014,7 @@ private fun sortLabel(key: DownloadSortKey): String = stringResource(
 private fun groupLabel(grouping: DownloadGrouping): String = stringResource(
     when (grouping) {
         DownloadGrouping.NONE -> R.string.downloads_group_none
+        DownloadGrouping.TITLE -> R.string.downloads_group_title
         DownloadGrouping.STATUS -> R.string.downloads_group_status
         DownloadGrouping.EPISODE -> R.string.downloads_group_episode
     },

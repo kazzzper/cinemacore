@@ -136,6 +136,10 @@ struct FeatureTrackingScreen: View {
             set: { enabled in
                 Task {
                     await tracker.setEnabled(entry.feature, enabled)
+                    // The shell reads the same flags; refresh it so the tab or
+                    // entry point belonging to this feature appears or goes
+                    // without waiting for a relaunch.
+                    await app.reloadEnabledFeatures()
                     await reload()
                 }
             }

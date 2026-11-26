@@ -19,6 +19,11 @@ struct RootView: View {
     var body: some View {
         tabsView
             .tint(Theme.app.brand.color)
+            // A feature turned off while its tab is open must hand the view
+            // back, or the app would keep showing a screen it no longer offers.
+            .onChange(of: app.enabledFeatures) { _, _ in
+                if !isVisible(selection) { selection = .home }
+            }
             .overlay { fullScreenGate }
             // The dismissible gates are real presentations, so their detents and
             // presentation background take effect; an overlay ignores both.
@@ -32,19 +37,52 @@ struct RootView: View {
         if #available(iOS 18.0, *) {
             TabView(selection: $selection) {
                 Tab("Home", systemImage: "house.fill", value: TabID.home) { homeStack }
-                Tab("Search", systemImage: "magnifyingglass", value: TabID.search) { searchStack }
-                Tab("Watchlist", systemImage: "bookmark.fill", value: TabID.watchlist) { watchlistStack }
-                Tab("Downloads", systemImage: "arrow.down.circle.fill", value: TabID.downloads) { downloadsStack }
+                if app.isEnabled(.search) {
+                    Tab("Search", systemImage: "magnifyingglass", value: TabID.search) { searchStack }
+                }
+                if app.isEnabled(.watchlist) {
+                    Tab("Watchlist", systemImage: "bookmark.fill", value: TabID.watchlist) {
+                        watchlistStack
+                    }
+                }
+                if app.isEnabled(.downloads) {
+                    Tab("Downloads", systemImage: "arrow.down.circle.fill", value: TabID.downloads) {
+                        downloadsStack
+                    }
+                }
                 Tab("Settings", systemImage: "gearshape.fill", value: TabID.settings) { settingsStack }
             }
         } else {
             TabView(selection: $selection) {
                 homeStack.tabItem { Label("Home", systemImage: "house.fill") }.tag(TabID.home)
-                searchStack.tabItem { Label("Search", systemImage: "magnifyingglass") }.tag(TabID.search)
-                watchlistStack.tabItem { Label("Watchlist", systemImage: "bookmark.fill") }.tag(TabID.watchlist)
-                downloadsStack.tabItem { Label("Downloads", systemImage: "arrow.down.circle.fill") }.tag(TabID.downloads)
-                settingsStack.tabItem { Label("Settings", systemImage: "gearshape.fill") }.tag(TabID.settings)
+                if app.isEnabled(.search) {
+                    searchStack.tabItem { Label("Search", systemImage: "magnifyingglass") }
+                        .tag(TabID.search)
+                }
+                if app.isEnabled(.watchlist) {
+                    watchlistStack.tabItem { Label("Watchlist", systemImage: "bookmark.fill") }
+                        .tag(TabID.watchlist)
+                }
+                if app.isEnabled(.downloads) {
+                    downloadsStack.tabItem {
+                        Label("Downloads", systemImage: "arrow.down.circle.fill")
+                    }
+                    .tag(TabID.downloads)
+                }
+                settingsStack.tabItem { Label("Settings", systemImage: "gearshape.fill") }
+                    .tag(TabID.settings)
             }
+        }
+    }
+
+    /// Home and Settings are the shell itself; the others are features a viewer
+    /// can switch off on this device.
+    private func isVisible(_ tab: TabID) -> Bool {
+        switch tab {
+        case .home, .settings: true
+        case .search: app.isEnabled(.search)
+        case .watchlist: app.isEnabled(.watchlist)
+        case .downloads: app.isEnabled(.downloads)
         }
     }
 

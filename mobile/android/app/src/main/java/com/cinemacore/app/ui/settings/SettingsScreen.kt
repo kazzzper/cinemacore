@@ -2,7 +2,7 @@ package com.cinemacore.app.ui.settings
 
 import android.content.ClipData
 import android.content.ClipboardManager
-import android.widget.Toast
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -42,6 +42,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -61,6 +62,7 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import com.cinemacore.app.BuildConfig
 import com.cinemacore.app.R
+import com.cinemacore.app.data.Feature
 import com.cinemacore.app.domain.SourceMode
 import com.cinemacore.app.ui.CinemacoreViewModel
 import com.cinemacore.app.ui.components.SectionTitle
@@ -97,6 +99,14 @@ fun SettingsScreen(
     var gatewayDraft by rememberSaveable { mutableStateOf(app.settings.gatewayUrl) }
     var tmdbDraft by rememberSaveable { mutableStateOf(app.settings.tmdbKey) }
     var tmdbVisible by rememberSaveable { mutableStateOf(false) }
+    var copiedVersion by remember { mutableStateOf(false) }
+
+    LaunchedEffect(copiedVersion) {
+        if (copiedVersion) {
+            kotlinx.coroutines.delay(1500)
+            copiedVersion = false
+        }
+    }
 
     fun launchAction(action: suspend () -> Unit) {
         actionFailed = false
@@ -413,17 +423,21 @@ fun SettingsScreen(
 
         SettingsSection(stringResource(R.string.settings_section_library)) {
             SettingsCard {
-                NavigationRow(
-                    title = stringResource(R.string.settings_library_history),
-                    detail = stringResource(R.string.settings_library_history_detail),
-                    onClick = onOpenHistory,
-                )
-                CardDivider()
-                NavigationRow(
-                    title = stringResource(R.string.settings_library_manage),
-                    detail = stringResource(R.string.settings_library_manage_detail),
-                    onClick = onOpenManage,
-                )
+                if (app.isEnabled(Feature.HISTORY)) {
+                    NavigationRow(
+                        title = stringResource(R.string.settings_library_history),
+                        detail = stringResource(R.string.settings_library_history_detail),
+                        onClick = onOpenHistory,
+                    )
+                }
+                if (app.isEnabled(Feature.CATEGORIES)) {
+                    if (app.isEnabled(Feature.HISTORY)) CardDivider()
+                    NavigationRow(
+                        title = stringResource(R.string.settings_library_manage),
+                        detail = stringResource(R.string.settings_library_manage_detail),
+                        onClick = onOpenManage,
+                    )
+                }
             }
         }
 
@@ -458,11 +472,7 @@ fun SettingsScreen(
                                     versionLabel,
                                 ),
                             )
-                            Toast.makeText(
-                                context,
-                                context.getString(R.string.settings_about_version_copied),
-                                Toast.LENGTH_SHORT,
-                            ).show()
+                            copiedVersion = true
                         }
                         .padding(CinemaSpacing.x4),
                     verticalAlignment = Alignment.CenterVertically,
@@ -473,11 +483,31 @@ fun SettingsScreen(
                         color = CinemaColors.TextPrimary,
                         modifier = Modifier.weight(1f),
                     )
-                    Text(
-                        text = versionLabel,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = CinemaColors.TextSecondary,
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = versionLabel,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = CinemaColors.TextSecondary,
+                        )
+                        androidx.compose.animation.AnimatedVisibility(visible = copiedVersion) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.Filled.Check,
+                                    contentDescription = null,
+                                    tint = CinemaColors.Brand,
+                                    modifier = Modifier
+                                        .padding(start = CinemaSpacing.x1)
+                                        .size(16.dp),
+                                )
+                                Text(
+                                    text = stringResource(R.string.settings_about_version_copied),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = CinemaColors.Brand,
+                                    modifier = Modifier.padding(start = 2.dp),
+                                )
+                            }
+                        }
+                    }
                 }
             }
         }

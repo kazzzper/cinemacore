@@ -529,6 +529,17 @@
       "acceptance": "Downloads group by episode; Settings copy confirmation resets; Continue Watching is app-owned from ResumePoints/history, respects hiddenRails and rail order; Detail/Watchlist/History keep loaded state on re-entry; iOS tests and Android unit tests + assembleDebug green; parity docs updated",
       "updatedAt": "2026-11-26T16:11:01.286Z",
       "links": []
+    },
+    {
+      "id": "T-042",
+      "title": "Home/Downloads/flags follow-up: Continue Watching below hero, downloads show→season→episode browser, copy feedback, feature flags gate the shell",
+      "status": "done",
+      "module": "mobile",
+      "owner": "buffy",
+      "deps": [],
+      "acceptance": "Continue Watching renders under the hero banner; grouped downloads navigate a show into seasons then episodes on both platforms; version copy shows a transient confirmation; disabling local feature flags removes their tabs/entries and download affordances; builds and unit tests green; parity doc updated",
+      "updatedAt": "2026-11-26T16:59:07.934Z",
+      "links": []
     }
   ]
 }

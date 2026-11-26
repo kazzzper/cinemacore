@@ -61,6 +61,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.cinemacore.app.R
 import com.cinemacore.app.domain.CastMember
+import com.cinemacore.app.data.Feature
 import com.cinemacore.app.domain.DownloadTarget
 import com.cinemacore.app.domain.Episode
 import com.cinemacore.app.domain.PlaybackPolicy
@@ -204,6 +205,7 @@ fun DetailScreen(
                 selectedEpisode = model.selectedEpisode,
                 episodesFailed = model.episodesFailed,
                 actionsEnabled = !queueing,
+                downloadsEnabled = app.isEnabled(Feature.DOWNLOADS),
                 onPlaySelected = {
                     playbackFor(detail, model.selectedEpisode)?.let(onPlay)
                 },
@@ -372,6 +374,7 @@ private fun DetailContent(
     selectedEpisode: Episode?,
     episodesFailed: Boolean,
     actionsEnabled: Boolean,
+    downloadsEnabled: Boolean,
     onPlaySelected: () -> Unit,
     onPlayEpisode: (Episode) -> Unit,
     onDownload: () -> Unit,
@@ -426,18 +429,20 @@ private fun DetailContent(
                             overflow = TextOverflow.Ellipsis,
                         )
                     }
-                    OutlinedButton(
-                        onClick = onDownload,
-                        enabled = actionsEnabled,
-                        modifier = Modifier.weight(1f).heightIn(min = 48.dp),
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.Download,
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp),
-                        )
-                        Spacer(Modifier.width(CinemaSpacing.x2))
-                        Text(stringResource(R.string.detail_download), maxLines = 1)
+                    if (downloadsEnabled) {
+                        OutlinedButton(
+                            onClick = onDownload,
+                            enabled = actionsEnabled,
+                            modifier = Modifier.weight(1f).heightIn(min = 48.dp),
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Download,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp),
+                            )
+                            Spacer(Modifier.width(CinemaSpacing.x2))
+                            Text(stringResource(R.string.detail_download), maxLines = 1)
+                        }
                     }
                 }
             }
@@ -574,6 +579,7 @@ private fun DetailContent(
                     episode = episode,
                     selected = episode.id == selectedEpisode?.id,
                     enabled = actionsEnabled,
+                    downloadEnabled = downloadsEnabled,
                     onPlay = { onPlayEpisode(episode) },
                     onDownload = { onDownloadEpisode(episode) },
                 )
@@ -668,6 +674,7 @@ private fun EpisodeRow(
     episode: Episode,
     selected: Boolean,
     enabled: Boolean,
+    downloadEnabled: Boolean,
     onPlay: () -> Unit,
     onDownload: () -> Unit,
 ) {
@@ -726,17 +733,19 @@ private fun EpisodeRow(
                 modifier = Modifier.size(20.dp),
             )
         }
-        IconButton(
-            onClick = onDownload,
-            enabled = enabled,
-            modifier = Modifier.size(36.dp),
-        ) {
-            Icon(
-                imageVector = Icons.Filled.Download,
-                contentDescription = stringResource(R.string.detail_download_episode),
-                tint = if (enabled) CinemaColors.TextPrimary else CinemaColors.TextSecondary,
-                modifier = Modifier.size(20.dp),
-            )
+        if (downloadEnabled) {
+            IconButton(
+                onClick = onDownload,
+                enabled = enabled,
+                modifier = Modifier.size(36.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Download,
+                    contentDescription = stringResource(R.string.detail_download_episode),
+                    tint = if (enabled) CinemaColors.TextPrimary else CinemaColors.TextSecondary,
+                    modifier = Modifier.size(20.dp),
+                )
+            }
         }
     }
 }

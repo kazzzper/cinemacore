@@ -30,7 +30,7 @@ struct DownloadsScreen: View {
                     emptyIcon: "arrow.down.circle",
                     retry: { await model.load() }
                 ) { sections in
-                    list(sections)
+                    browser(sections)
                 }
 
                 if !app.downloads.isEmpty { storageFooter }
@@ -87,6 +87,71 @@ struct DownloadsScreen: View {
     }
 
     // MARK: - List
+
+    /// Grouping by title is a library, not a longer list: one row per show,
+    /// which opens its seasons and episodes instead of spilling every episode
+    /// down the main screen.
+    @ViewBuilder
+    private func browser(_ sections: [DownloadSection]) -> some View {
+        if model.grouping == .title || model.grouping == .episode {
+            showList(sections)
+        } else {
+            list(sections)
+        }
+    }
+
+    private func showList(_ sections: [DownloadSection]) -> some View {
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: Layout.spacing3) {
+                ForEach(sections) { section in
+                    if let first = section.items.first {
+                        NavigationLink {
+                            DownloadShowScreen(app: app, subjectID: first.subjectID)
+                        } label: {
+                            showRow(section: section, first: first)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityHint("Opens the downloaded seasons and episodes")
+                    }
+                }
+            }
+            .padding(.vertical, Layout.spacing3)
+        }
+    }
+
+    private func showRow(section: DownloadSection, first: DownloadItem) -> some View {
+        let bytes = section.items.reduce(into: Int64(0)) { $0 += $1.totalBytes }
+        let finished = section.items.filter(\.isFinished).count
+        return HStack(spacing: Layout.spacing3) {
+            RemoteImage(url: posterURL(first.poster))
+                .frame(width: 56, height: 84)
+                .clipShape(RoundedRectangle(cornerRadius: Layout.radiusSmall, style: .continuous))
+
+            VStack(alignment: .leading, spacing: Layout.spacing1) {
+                Text(section.title)
+                    .font(Typography.rowTitle)
+                    .foregroundStyle(theme.textPrimary.color)
+                    .lineLimit(2)
+                Text(
+                    "\(section.items.count) episode\(section.items.count == 1 ? "" : "s") "
+                        + "· \(finished) downloaded"
+                        + (bytes > 0 ? " · \(DownloadsModel.sizeText(bytes))" : "")
+                )
+                .font(Typography.metadata)
+                .foregroundStyle(theme.textSecondary.color)
+            }
+
+            Spacer(minLength: 0)
+
+            Image(systemName: "chevron.right")
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(theme.textSecondary.color)
+        }
+        .padding(.horizontal, Layout.spacing4)
+        .padding(.vertical, Layout.spacing2)
+        .frame(minHeight: Layout.minimumTarget)
+        .contentShape(Rectangle())
+    }
 
     private func list(_ sections: [DownloadSection]) -> some View {
         ScrollView {

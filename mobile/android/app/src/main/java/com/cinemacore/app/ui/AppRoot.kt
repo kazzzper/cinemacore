@@ -32,6 +32,7 @@ import com.cinemacore.app.domain.PlaybackRequest
 import com.cinemacore.app.ui.detail.DetailScreen
 import com.cinemacore.app.ui.docs.DocsScreen
 import com.cinemacore.app.ui.docs.LabScreen
+import com.cinemacore.app.ui.downloads.DownloadShowScreen
 import com.cinemacore.app.ui.downloads.DownloadsScreen
 import com.cinemacore.app.ui.home.HomeScreen
 import com.cinemacore.app.ui.library.HistoryScreen
@@ -57,6 +58,18 @@ fun CinemacoreRoot(
         }
     }
     val stack = stacks.getValue(selectedTab)
+    // An empty set means the flags have not been read yet; showing everything
+    // for that instant is better than flashing a shell with no Search tab.
+    val visibleTabs = remember(app.enabledFeatures) {
+        if (app.enabledFeatures.isEmpty()) {
+            AppTab.entries
+        } else {
+            AppTab.entries.filter { it.feature == null || it.feature in app.enabledFeatures }
+        }
+    }
+    LaunchedEffect(visibleTabs) {
+        if (selectedTab !in visibleTabs) selectedTab = AppTab.HOME
+    }
 
     fun push(route: AppRoute) {
         stacks.getValue(selectedTab).add(route)
@@ -75,6 +88,7 @@ fun CinemacoreRoot(
         bottomBar = {
             if (stack.isEmpty()) {
                 AppNavigationBar(
+                    tabs = visibleTabs,
                     selected = selectedTab,
                     onSelect = { tab ->
                         if (selectedTab == tab) {
@@ -114,6 +128,7 @@ fun CinemacoreRoot(
                         onOpenDetail = { subject, season ->
                             push(AppRoute.Detail(subject, season))
                         },
+                        onOpenShow = { subjectId -> push(AppRoute.DownloadShow(subjectId)) },
                         onPlay = onPlay,
                     )
                     AppTab.SETTINGS -> SettingsScreen(
@@ -159,6 +174,12 @@ fun CinemacoreRoot(
                         app = app,
                         onBack = ::pop,
                     )
+                    is AppRoute.DownloadShow -> DownloadShowScreen(
+                        app = app,
+                        subjectId = route.subjectId,
+                        onBack = ::pop,
+                        onPlay = onPlay,
+                    )
                 }
             }
         }
@@ -167,6 +188,7 @@ fun CinemacoreRoot(
 
 @Composable
 private fun AppNavigationBar(
+    tabs: List<AppTab>,
     selected: AppTab,
     onSelect: (AppTab) -> Unit,
 ) {
@@ -181,7 +203,7 @@ private fun AppNavigationBar(
         containerColor = CinemaColors.Surface,
         tonalElevation = 0.dp,
     ) {
-        AppTab.entries.forEach { tab ->
+        tabs.forEach { tab ->
             NavigationBarItem(
                 selected = selected == tab,
                 onClick = { onSelect(tab) },

@@ -41,6 +41,7 @@ enum class DownloadSortKey {
 @Serializable
 enum class DownloadGrouping {
     NONE,
+    TITLE,
     STATUS,
 
     /** One section per show, with its episodes in transmission order. */
@@ -50,6 +51,7 @@ enum class DownloadGrouping {
     val label: String
         get() = when (this) {
             NONE -> "Ungrouped"
+            TITLE -> "Group by title"
             STATUS -> "Group by status"
             EPISODE -> "Group by episode"
         }
