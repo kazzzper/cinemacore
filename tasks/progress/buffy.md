@@ -287,3 +287,4 @@ for different jobs, plus Linux where the logic actually lives.**
   of the suite on a paid runner.
 
 Open: the tag lane has never run green; that needs a push (or a tag) and the uploaded bundle.
+- 2026-11-26T13:44:23.257Z — updated T-037: ios-build: ship CFBundleIdentifier/CFBundleExecutable/CFBundlePackageType in Info.plist; xcodebuild never injected them, only xtool did

@@ -2,6 +2,21 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<!-- This target uses a hand-written Info.plist, so Xcode only injects
+	     CFBundleIdentifier/CFBundleExecutable when GENERATE_INFOPLIST_FILE is
+	     on (it is not, here). Without them the app cannot be installed or
+	     launched, so the identity lives in the plist. Concrete values because
+	     xtool does not expand $(BUILD_SETTINGS). Keep them in step with
+	     PRODUCT_BUNDLE_IDENTIFIER/PRODUCT_NAME in the project and bundleID in
+	     xtool.yml. -->
+	<key>CFBundleIdentifier</key>
+	<string>com.cinemacore.app</string>
+	<key>CFBundleExecutable</key>
+	<string>Cinemacore</string>
+	<key>CFBundleName</key>
+	<string>Cinemacore</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
 	<key>CFBundleDisplayName</key>
 	<string>Cinemacore</string>
 	<!-- Copied to the .app root by the project's Copy Root Resources phase. -->

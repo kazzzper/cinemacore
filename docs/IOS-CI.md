@@ -163,6 +163,12 @@ free Apple ID; the signature lasts 7 days, then re-sideload. See
 - **Version check fails** — the plist was not rewritten; confirm
   `scripts/ios-build` ran `scripts/generate-version --concrete` and that the
   target still has `INFOPLIST_FILE = Info.plist`.
+- **`CFBundleIdentifier=None, expected 'com.cinemacore.app'`** — the app was
+  built from a plist without the bundle identity keys. Xcode only fills
+  `CFBundleIdentifier`/`CFBundleExecutable` in from build settings when
+  `GENERATE_INFOPLIST_FILE` is on; with a hand-written `INFOPLIST_FILE` they
+  must be in the file. xtool masks this because it injects them from
+  `xtool.yml` at packaging time.
 - **`Multiple commands produce ... Info.plist`** — a plist override leaked onto
   the command line again; see "Version inputs" above.
 
