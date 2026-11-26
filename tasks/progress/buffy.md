@@ -347,3 +347,7 @@ The release path already wrote `VERSION`, prepended a generated `CHANGELOG.md` s
 
 Verification: `make changelog` after the fix lists the nine commits since `v0.0.1-beta.2` instead of
 the entire prior history; `make release-dry-run` shows the same section.
+- 2026-11-26T15:57 — recorded `v0.0.1-beta.3` (build 133) with `make release ARGS="patch --channel beta"`; `CHANGELOG.md` got exactly one new section. Installed that build on the connected iPhone (`00008101-000530913442001E`) with `make dev-ios ARGS="--usb"` — signed, verified and launched by xtool. The version tag is local only; push is left to the user.
+- 2026-11-26T14:50:55.133Z — updated T-040: make changelog preview + AGENTS.md contract + range fix; beta.3 recorded (build 133) and installed on iPhone 00008101-000530913442001E via make dev-ios
+- 2026-11-26T14:50:55.180Z — done T-040
+- 2026-11-26T14:50:55.227Z — updated T-038: installed 0.0.1-beta.3 (133, 9734005) on the connected iPhone with make dev-ios --usb; subtitle behaviour on device still to be confirmed

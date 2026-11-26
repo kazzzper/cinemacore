@@ -494,7 +494,7 @@
       "owner": "buffy",
       "deps": [],
       "acceptance": "history rows store the show title; a stored-row playback resolves the catalog subject for the community lookup; a finished download archives provider captions, falling back to community tracks, scoped per episode; captions of items that completed in the background are backfilled at launch; core tests + xtool build green",
-      "updatedAt": "2026-11-26T14:37:36.433Z",
+      "updatedAt": "2026-11-26T14:50:55.226Z",
       "links": []
     },
     {
@@ -511,12 +511,12 @@
     {
       "id": "T-040",
       "title": "Version system: changelog preview + agent contract, and a correct since-last-tag range",
-      "status": "doing",
+      "status": "done",
       "module": "scripts",
       "owner": "buffy",
       "deps": [],
       "acceptance": "make changelog prints the section the next release records; scripts/changelog treats --range <tag> as tag..HEAD; AGENTS.md documents VERSION/CHANGELOG/dev-ios; a release records exactly one CHANGELOG section",
-      "updatedAt": "2026-11-26T14:48:26.900Z",
+      "updatedAt": "2026-11-26T14:50:55.180Z",
       "links": []
     }
   ]
