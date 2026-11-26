@@ -105,6 +105,17 @@ final class AppModel {
     func bootstrap() async {
         guard !bootstrapped else { return }
         settings = await library.settings()
+        // Downloads used to open ungrouped, which scattered a show's episodes
+        // down the screen. Existing documents stored that default, so treat
+        // `.none` as the old default once and open on the show browser.
+        if !settings.downloadGroupingMigrated {
+            await updateSettings { settings in
+                if settings.downloadGrouping == .none {
+                    settings.downloadGrouping = .episode
+                }
+                settings.downloadGroupingMigrated = true
+            }
+        }
 
         let resolution = await resolveCatalog()
         // A cancelled resolution reports the source as unavailable; committing

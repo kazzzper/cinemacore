@@ -73,6 +73,12 @@ data class AppSettings(
     val downloadSortKey: DownloadSortKey = DownloadSortKey.ADDED,
     val downloadSortAscending: Boolean = false,
     val downloadGrouping: DownloadGrouping = DownloadGrouping.NONE,
+    /**
+     * Whether the old ungrouped default has already been replaced by the show
+     * browser. Existing documents stored NONE because that was the default, not
+     * because the viewer chose it.
+     */
+    val downloadGroupingMigrated: Boolean = false,
 ) {
     val effectiveGatewayUrl: String
         get() = gatewayUrl.trim().ifEmpty { DEFAULT_GATEWAY }

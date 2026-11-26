@@ -52,6 +52,10 @@ public struct LibrarySettings: Codable, Hashable, Sendable {
     public var downloadSortAscending: Bool
     /// How the Downloads screen groups its queue.
     public var downloadGrouping: DownloadGrouping
+    /// Whether the old ungrouped default has already been replaced by the show
+    /// browser. Existing documents stored `.none` because that was the default,
+    /// not because the viewer chose it.
+    public var downloadGroupingMigrated: Bool
 
     public init(
         catalogSourceMode: String = "builtIn",
@@ -63,7 +67,8 @@ public struct LibrarySettings: Codable, Hashable, Sendable {
         autoPlayNext: Bool = true,
         downloadSortKey: DownloadSortKey = .dateAdded,
         downloadSortAscending: Bool = false,
-        downloadGrouping: DownloadGrouping = .none
+        downloadGrouping: DownloadGrouping = .none,
+        downloadGroupingMigrated: Bool = false
     ) {
         self.catalogSourceMode = catalogSourceMode
         self.gatewayURL = gatewayURL
@@ -75,11 +80,12 @@ public struct LibrarySettings: Codable, Hashable, Sendable {
         self.downloadSortKey = downloadSortKey
         self.downloadSortAscending = downloadSortAscending
         self.downloadGrouping = downloadGrouping
+        self.downloadGroupingMigrated = downloadGroupingMigrated
     }
 
     private enum CodingKeys: String, CodingKey {
         case catalogSourceMode, gatewayURL, preferredLanguage, hiddenRails, categoryOrder, playbackSpeed, autoPlayNext
-        case downloadSortKey, downloadSortAscending, downloadGrouping
+        case downloadSortKey, downloadSortAscending, downloadGrouping, downloadGroupingMigrated
     }
 
     /// Tolerant decoding: a document written by an older build is missing the
@@ -100,6 +106,10 @@ public struct LibrarySettings: Codable, Hashable, Sendable {
             ?? false
         downloadGrouping = try container.decodeIfPresent(DownloadGrouping.self, forKey: .downloadGrouping)
             ?? .none
+        downloadGroupingMigrated = try container.decodeIfPresent(
+            Bool.self,
+            forKey: .downloadGroupingMigrated
+        ) ?? false
     }
 
     /// The gateway used when gateway mode is chosen without a URL.

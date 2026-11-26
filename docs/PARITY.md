@@ -17,7 +17,7 @@ Legend: **✅** shipped · **🟡** partial / different behaviour · **⬜** mis
 | Search + suggestions | ✅ | ✅ | |
 | Detail: seasons, episodes, dub switch, download | ✅ | ✅ | Per-episode download button on both |
 | Downloads: queue, pause/resume, local playback | ✅ | ✅ | Android `DownloadService` (foreground dataSync) |
-| Downloads: grouping by title, status, episode, or none | ✅ | ✅ | Title/Episode show one row per show, which opens its seasons and episodes; the chosen sort only breaks ties within an episode |
+| Downloads: grouping by title, status, episode, or none | ✅ | ✅ | Opens grouped by episode so a series is one row that drills into seasons/episodes; an old stored "ungrouped" default is migrated once. The chosen sort only breaks ties within an episode |
 | Progressive playback of an in-progress download | ✅ | ⬜ | iOS: loopback range server over `.part`; readiness no longer depends on a known total size; Android plays only finished files — T-032 |
 | A finished download starts without a provider round trip | ✅ | ✅ | Both check the queue first and open the file; Android used to ask the provider first, so a downloaded episode waited and failed offline |
 | Download quality choice before queueing | ✅ | ✅ | iOS resolves the episode's ladder and shows it in a sheet; Android `DownloadQualityDialog` |

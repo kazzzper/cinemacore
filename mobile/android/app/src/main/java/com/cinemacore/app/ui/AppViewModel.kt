@@ -107,6 +107,7 @@ class CinemacoreViewModel(private val container: AppContainer) : ViewModel() {
     }
 
     suspend fun bootstrap() {
+        migrateDownloadGrouping()
         val resolution = runCatching { container.bootstrap() }.getOrElse {
             container.lastResolution
         }
@@ -117,6 +118,26 @@ class CinemacoreViewModel(private val container: AppContainer) : ViewModel() {
         bootstrapped = true
         container.downloads.start()
         if (container.downloads.activeCount() > 0) DownloadService.start(container.context)
+    }
+
+    /**
+     * Downloads used to open ungrouped, scattering a show's episodes down the
+     * screen. Existing documents stored that default, so replace `.none` once
+     * and let the queue open on the show browser.
+     */
+    private suspend fun migrateDownloadGrouping() {
+        val current = container.settings.settings.value
+        if (current.downloadGroupingMigrated) return
+        container.settings.update { settings ->
+            settings.copy(
+                downloadGrouping = if (settings.downloadGrouping == DownloadGrouping.NONE) {
+                    DownloadGrouping.EPISODE
+                } else {
+                    settings.downloadGrouping
+                },
+                downloadGroupingMigrated = true,
+            )
+        }
     }
 
     suspend fun setSourceMode(mode: SourceMode) {
