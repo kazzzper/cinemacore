@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.0.1-beta.3] - 2026-11-26
+
+### Bug Fixes
+
+- **release:** record only the commits since the last tag
+- **ios:** keep captions on stored-row playbacks and in downloads
+- **ios:** put the bundle identity in Info.plist for xcodebuild
+- **ios:** stat file sizes so a grown partial is seen
+
+### CI
+
+- **ios:** let a manual dispatch run the simulator suite
+- **ios:** test the package on linux and keep the simulator for tags
+- **release:** verify the iOS build on every non-tag run
+- **ios:** build releases with Xcode only
 ## [0.0.1-beta.2] - 2026-11-25
 
 ### Bug Fixes
