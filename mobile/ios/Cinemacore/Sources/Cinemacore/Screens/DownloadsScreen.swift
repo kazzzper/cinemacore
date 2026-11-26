@@ -1,7 +1,12 @@
 import CinemacoreCore
 import SwiftUI
 
-/// The download manager: the live queue, its progress, and its storage cost.
+/// The download library: one row per title, the queue's health, and its cost.
+///
+/// A series is a title, not a list of files. Its episodes live behind the show
+/// row on ``DownloadShowScreen``, the way a streaming service opens a show
+/// before an episode. The library itself is never grouped into headings —
+/// sorting is a menu, not a set of sections.
 struct DownloadsScreen: View {
     let app: AppModel
 
@@ -22,6 +27,7 @@ struct DownloadsScreen: View {
 
             VStack(spacing: 0) {
                 if !app.isLive { demoNotice }
+                if !app.downloads.isEmpty { summaryBar }
 
                 StateView(
                     state: model.state(app.downloads),
@@ -29,11 +35,9 @@ struct DownloadsScreen: View {
                     emptyMessage: emptyMessage,
                     emptyIcon: "arrow.down.circle",
                     retry: { await model.load() }
-                ) { sections in
-                    browser(sections)
+                ) { rows in
+                    library(rows)
                 }
-
-                if !app.downloads.isEmpty { storageFooter }
             }
         }
         .navigationTitle("Downloads")
@@ -86,66 +90,91 @@ struct DownloadsScreen: View {
             + "Episodes and whole seasons can be queued from a series' detail screen."
     }
 
-    // MARK: - List
+    // MARK: - Library
 
-    /// Grouping by title is a library, not a longer list: one row per show,
-    /// which opens its seasons and episodes instead of spilling every episode
-    /// down the main screen.
-    @ViewBuilder
-    private func browser(_ sections: [DownloadSection]) -> some View {
-        if model.grouping == .title || model.grouping == .episode {
-            showList(sections)
-        } else {
-            list(sections)
-        }
-    }
-
-    private func showList(_ sections: [DownloadSection]) -> some View {
+    private func library(_ rows: [DownloadsModel.TitleRow]) -> some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: Layout.spacing3) {
-                ForEach(sections) { section in
-                    if let first = section.items.first {
-                        NavigationLink {
-                            DownloadShowScreen(app: app, subjectID: first.subjectID)
-                        } label: {
-                            showRow(section: section, first: first)
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityHint("Opens the downloaded seasons and episodes")
-                    }
+                ForEach(rows) { row in
+                    titleRow(row)
                 }
             }
             .padding(.vertical, Layout.spacing3)
         }
     }
 
-    private func showRow(section: DownloadSection, first: DownloadItem) -> some View {
-        let bytes = section.items.reduce(into: Int64(0)) { $0 += $1.totalBytes }
-        let finished = section.items.filter(\.isFinished).count
-        return HStack(spacing: Layout.spacing3) {
-            RemoteImage(url: posterURL(first.poster))
-                .frame(width: 56, height: 84)
+    @ViewBuilder
+    private func titleRow(_ row: DownloadsModel.TitleRow) -> some View {
+        if row.isSeries {
+            NavigationLink {
+                DownloadShowScreen(app: app, model: model, subjectID: row.subjectID)
+            } label: {
+                titleRowContent(row, accessory: .chevron)
+            }
+            .buttonStyle(.plain)
+            .accessibilityHint("Opens the downloaded seasons and episodes")
+            .contextMenu { rowMenu(row) }
+        } else if let item = row.playable, canPlay(item) {
+            NavigationLink(value: Route.player(playbackRequest(for: item))) {
+                titleRowContent(row, accessory: .play)
+            }
+            .buttonStyle(.plain)
+            .accessibilityHint("Plays \(row.title)")
+            .contextMenu { rowMenu(row) }
+        } else {
+            Button {
+                movieAction(row)
+            } label: {
+                titleRowContent(row, accessory: accessory(for: row))
+            }
+            .buttonStyle(.plain)
+            .accessibilityHint(movieHint(for: row))
+            .contextMenu { rowMenu(row) }
+        }
+    }
+
+    private func titleRowContent(
+        _ row: DownloadsModel.TitleRow,
+        accessory: TitleAccessory
+    ) -> some View {
+        HStack(alignment: .top, spacing: Layout.spacing3) {
+            RemoteImage(url: posterURL(row.poster))
+                .frame(width: 64, height: 96)
                 .clipShape(RoundedRectangle(cornerRadius: Layout.radiusSmall, style: .continuous))
 
             VStack(alignment: .leading, spacing: Layout.spacing1) {
-                Text(section.title)
+                Text(row.title)
                     .font(Typography.rowTitle)
                     .foregroundStyle(theme.textPrimary.color)
                     .lineLimit(2)
-                Text(
-                    "\(section.items.count) episode\(section.items.count == 1 ? "" : "s") "
-                        + "· \(finished) downloaded"
-                        + (bytes > 0 ? " · \(DownloadsModel.sizeText(bytes))" : "")
-                )
-                .font(Typography.metadata)
-                .foregroundStyle(theme.textSecondary.color)
+
+                Text(subtitle(for: row))
+                    .font(Typography.metadata)
+                    .foregroundStyle(theme.textSecondary.color)
+                    .lineLimit(2)
+
+                if row.status != .completed {
+                    HStack(spacing: Layout.spacing2) {
+                        statusPill(row.status)
+                        if row.status == .downloading || row.status == .paused {
+                            ProgressView(value: row.progress)
+                                .tint(theme.brand.color)
+                                .animation(
+                                    reduceMotion ? nil : .linear(duration: 0.25),
+                                    value: row.progress
+                                )
+                            Text("\(Int((row.progress * 100).rounded()))%")
+                                .font(Typography.badge)
+                                .foregroundStyle(theme.textSecondary.color)
+                                .monospacedDigit()
+                        }
+                    }
+                }
             }
 
             Spacer(minLength: 0)
 
-            Image(systemName: "chevron.right")
-                .font(.footnote.weight(.semibold))
-                .foregroundStyle(theme.textSecondary.color)
+            accessoryView(accessory)
         }
         .padding(.horizontal, Layout.spacing4)
         .padding(.vertical, Layout.spacing2)
@@ -153,217 +182,88 @@ struct DownloadsScreen: View {
         .contentShape(Rectangle())
     }
 
-    private func list(_ sections: [DownloadSection]) -> some View {
-        ScrollView {
-            LazyVStack(alignment: .leading, spacing: Layout.spacing4) {
-                ForEach(sections) { section in
-                    if !section.items.isEmpty {
-                        VStack(alignment: .leading, spacing: Layout.spacing2) {
-                            if model.grouping != .none { sectionHeader(section) }
-                            ForEach(model.rows(section)) { row in
-                                rowView(row)
-                            }
-                        }
-                    }
-                }
+    private func subtitle(for row: DownloadsModel.TitleRow) -> String {
+        if row.isSeries {
+            var text = row.items.count == 1 ? "1 episode" : "\(row.items.count) episodes"
+            if row.seasonCount > 1 {
+                text = "\(row.seasonCount) seasons · " + text
             }
-            .padding(.vertical, Layout.spacing3)
+            text += " · \(row.finishedCount) downloaded"
+            if row.failedCount > 0 {
+                text += " · \(row.failedCount) failed"
+            }
+            if row.totalBytes > 0 {
+                text += " · \(DownloadsModel.sizeText(row.totalBytes))"
+            }
+            return text
         }
+
+        var text = row.totalBytes > 0 ? DownloadsModel.sizeText(row.totalBytes) : "Downloaded"
+        if row.isFullyDownloaded {
+            text += " · Available offline"
+        }
+        return text
     }
 
-    private func sectionHeader(_ section: DownloadSection) -> some View {
-        HStack(spacing: Layout.spacing2) {
-            Text(section.title)
-                .font(Typography.sectionTitle)
-                .foregroundStyle(theme.textPrimary.color)
-            Spacer(minLength: 0)
-            // A title-grouped section *is* a show, so its whole-show controls
-            // live here; other groupings offer them per row instead.
-            if model.grouping == .title, let first = section.items.first {
-                showMenu(first)
-            }
-        }
-        .padding(.horizontal, Layout.spacing4)
-    }
-
-    private func rowView(_ row: DownloadsModel.Row) -> some View {
-        let item = row.item
-        let showIDs = app.downloads.filter { $0.subjectID == item.subjectID }.map(\.id)
-        return HStack(alignment: .top, spacing: Layout.spacing3) {
-            // Tapping the episode opens its season, where the rest of the show
-            // can be queued: a download row is a way in, not only a receipt.
-            NavigationLink(value: catalogRoute(for: item)) {
-                HStack(alignment: .top, spacing: Layout.spacing3) {
-                    RemoteImage(url: posterURL(item.poster))
-                        .frame(width: 56, height: 84)
-                        .clipShape(RoundedRectangle(cornerRadius: Layout.radiusSmall, style: .continuous))
-
-                    VStack(alignment: .leading, spacing: Layout.spacing1) {
-                if row.showsSubjectTitle {
-                    Text(item.title)
-                        .font(Typography.rowTitle)
-                        .foregroundStyle(theme.textPrimary.color)
-                        .lineLimit(2)
-                }
-
-                HStack(spacing: Layout.spacing2) {
-                    if let label = item.episodeLabel {
-                        Text(label)
-                            .font(Typography.metadata.weight(.medium))
-                            .foregroundStyle(theme.textPrimary.color)
-                            .lineLimit(1)
-                    } else if !row.showsSubjectTitle {
-                        Text(item.title)
-                            .font(Typography.metadata.weight(.medium))
-                            .foregroundStyle(theme.textPrimary.color)
-                            .lineLimit(1)
-                    }
-                    Text(item.status.label)
-                        .font(Typography.badge)
-                        .foregroundStyle(statusColor(item.status))
-                }
-
-                if let subtitle = item.episodeTitle, !subtitle.isEmpty, row.showsSubjectTitle {
-                    Text(subtitle)
-                        .font(Typography.metadata)
-                        .foregroundStyle(theme.textSecondary.color)
-                        .lineLimit(1)
-                }
-
-                if item.status == .failed, let failure = item.failure, !failure.isEmpty {
-                    Text(failure)
-                        .font(Typography.metadata)
-                        .foregroundStyle(theme.brand.color)
-                        .lineLimit(3)
-                } else if item.status != .completed {
-                    ProgressView(value: item.progress)
-                        .tint(theme.brand.color)
-                        .animation(reduceMotion ? nil : .linear(duration: 0.25), value: item.bytesWritten)
-                        .accessibilityLabel("\(Int((item.progress * 100).rounded())) percent downloaded")
-                }
-
-                if let detail = model.detailText(for: item) {
-                    Text(detail)
-                        .font(Typography.metadata)
-                        .foregroundStyle(theme.textSecondary.color)
-                        .lineLimit(1)
-                }
-
-                // Captions travel with the episode now, so the row can say so
-                // instead of leaving the viewer to discover it in the player.
-                if !item.subtitles.isEmpty {
-                    Label("\(item.subtitles.count) captions", systemImage: "captions.bubble")
-                        .font(Typography.badge)
-                        .foregroundStyle(theme.textSecondary.color)
-                        .lineLimit(1)
-                }
-                    }
-                }
-            }
-            .buttonStyle(.plain)
-            .accessibilityHint("Opens this title's season so you can download more episodes")
-
-            Spacer(minLength: 0)
-
-            VStack(spacing: Layout.spacing1) {
-                primaryAction(item)
-                itemMenu(item, showIDs: showIDs)
-            }
-        }
-        .padding(.horizontal, Layout.spacing4)
-        .padding(.vertical, Layout.spacing2)
-        .frame(minHeight: Layout.minimumTarget)
-    }
-
-    /// A whole show's controls: every episode of one subject moves together.
-    private func showMenu(_ item: DownloadItem) -> some View {
-        let ids = app.downloads.filter { $0.subjectID == item.subjectID }.map(\.id)
-        return Menu {
-            Button { perform(.pause, on: ids) } label: { Label("Pause Show", systemImage: "pause") }
-            Button { perform(.resume, on: ids) } label: { Label("Resume Show", systemImage: "play") }
-            Divider()
-            Button(role: .destructive) {
-                ask(.remove, ids: ids, name: item.title)
-            } label: {
-                Label("Remove Show", systemImage: "trash")
-            }
-        } label: {
-            icon("ellipsis.circle")
-        }
-        .accessibilityLabel("Actions for \(item.title)")
-    }
-
-    private func itemMenu(_ item: DownloadItem, showIDs: [String]) -> some View {
-        Menu {
-            if item.isActive || item.status == .queued {
-                Button { perform(.pause, on: [item.id]) } label: { Label("Pause", systemImage: "pause") }
-            }
-            if item.status == .failed {
-                Button { Task { await app.retry(item.id) } } label: {
-                    Label("Retry", systemImage: "arrow.clockwise")
-                }
-            } else if item.canResume {
-                Button { perform(.resume, on: [item.id]) } label: { Label("Resume", systemImage: "play") }
-            }
-
-            Divider()
-
-            if !item.isFinished {
-                Button(role: .destructive) {
-                    ask(.cancel, ids: [item.id], name: displayName(item))
-                } label: {
-                    Label("Cancel", systemImage: "xmark")
-                }
-            }
-            Button(role: .destructive) {
-                ask(.remove, ids: [item.id], name: displayName(item))
-            } label: {
-                Label("Remove", systemImage: "trash")
-            }
-
-            if model.grouping != .title, showIDs.count > 1 {
-                Divider()
-                Button { perform(.pause, on: showIDs) } label: { Label("Pause Show", systemImage: "pause") }
-                Button { perform(.resume, on: showIDs) } label: { Label("Resume Show", systemImage: "play") }
-                Button(role: .destructive) {
-                    ask(.remove, ids: showIDs, name: item.title)
-                } label: {
-                    Label("Remove Show", systemImage: "trash")
-                }
-            }
-        } label: {
-            icon("ellipsis.circle")
-        }
-        .accessibilityLabel("More actions for \(displayName(item))")
+    private func accessory(for row: DownloadsModel.TitleRow) -> TitleAccessory {
+        if let item = row.playable, canPlay(item) { return .play }
+        if row.failedCount > 0 { return .retry }
+        if row.pausedCount > 0 { return .play }
+        if row.activeCount > 0 || row.queuedCount > 0 { return .pause }
+        return .play
     }
 
     @ViewBuilder
-    private func primaryAction(_ item: DownloadItem) -> some View {
-        if item.isFinished {
-            NavigationLink(value: Route.player(playbackRequest(for: item))) {
-                icon("play.fill")
+    private func accessoryView(_ accessory: TitleAccessory) -> some View {
+        switch accessory {
+        case .chevron:
+            Image(systemName: accessory.symbol)
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(theme.textSecondary.color)
+                .frame(width: Layout.minimumTarget, height: Layout.minimumTarget)
+                .accessibilityHidden(true)
+        case .play, .pause, .retry:
+            Image(systemName: accessory.symbol)
+                .font(.body)
+                .foregroundStyle(theme.textPrimary.color)
+                .frame(width: Layout.minimumTarget, height: Layout.minimumTarget)
+                .accessibilityHidden(true)
+        }
+    }
+
+    /// Long-press actions for a whole title, so a row can stay a clean target
+    /// instead of carrying a second ellipsis beside its play control.
+    @ViewBuilder
+    private func rowMenu(_ row: DownloadsModel.TitleRow) -> some View {
+        let pausable = row.items.filter { $0.isActive || $0.status == .queued }.map(\.id)
+        let resumable = row.items.filter(\.canResume).map(\.id)
+        let failed = row.items.filter { $0.status == .failed }.map(\.id)
+        let all = row.items.map(\.id)
+
+        if !pausable.isEmpty {
+            Button { perform(.pause, on: pausable) } label: {
+                Label(row.isSeries ? "Pause Show" : "Pause", systemImage: "pause")
             }
-            .accessibilityLabel("Play \(displayName(item))")
-        } else if app.progressiveReadyIDs.contains(item.id) {
-            // The loopback server only offers a row once its committed prefix
-            // (and moov, when known) is enough to start, so this is a real
-            // Play button rather than a promise the player cannot keep.
-            NavigationLink(value: Route.player(playbackRequest(for: item))) {
-                icon("play.fill")
+        }
+        if !resumable.isEmpty {
+            Button { perform(.resume, on: resumable) } label: {
+                Label(row.isSeries ? "Resume Show" : "Resume", systemImage: "play")
             }
-            .accessibilityLabel("Play \(displayName(item)) while downloading")
-        } else if item.status == .failed {
-            iconButton("arrow.clockwise", label: "Retry \(displayName(item))") {
-                Task { await app.retry(item.id) }
+        }
+        if !failed.isEmpty {
+            Button {
+                Task {
+                    for id in failed { await app.retry(id) }
+                }
+            } label: {
+                Label("Retry", systemImage: "arrow.clockwise")
             }
-        } else if item.status == .paused {
-            iconButton("play.fill", label: "Resume \(displayName(item))") {
-                perform(.resume, on: [item.id])
-            }
-        } else {
-            iconButton("pause.fill", label: "Pause \(displayName(item))") {
-                perform(.pause, on: [item.id])
-            }
+        }
+        Divider()
+        Button(role: .destructive) {
+            ask(.remove, ids: all, name: row.title, isShow: row.isSeries)
+        } label: {
+            Label(row.isSeries ? "Remove Show" : "Remove", systemImage: "trash")
         }
     }
 
@@ -390,16 +290,10 @@ struct DownloadsScreen: View {
                     systemImage: app.settings.downloadSortAscending ? "arrow.down" : "arrow.up"
                 )
             }
-            Divider()
-            Picker("Group by", selection: groupingBinding) {
-                ForEach(DownloadGrouping.allCases) { grouping in
-                    Text(grouping.label).tag(grouping)
-                }
-            }
         } label: {
             icon("arrow.up.arrow.down")
         }
-        .accessibilityLabel("Sort and group downloads")
+        .accessibilityLabel("Sort downloads")
     }
 
     private var bulkMenu: some View {
@@ -421,23 +315,48 @@ struct DownloadsScreen: View {
         .accessibilityLabel("Download actions")
     }
 
-    /// Every completed download's disk cost, plus how many are finished — the
-    /// only place a user can see what the feature is costing them.
-    private var storageFooter: some View {
-        HStack(spacing: Layout.spacing2) {
-            Image(systemName: "internaldrive")
-            Text("\(DownloadsModel.sizeText(model.bytesOnDisk)) on disk · \(completedCount) completed")
-            Spacer(minLength: 0)
+    // MARK: - Summary
+
+    /// The queue at a glance: what is running, what is waiting, and what the
+    /// downloads cost. It sits above the library because the storage line used
+    /// to be a footer, which on a long queue is the number you had to scroll
+    /// furthest to find.
+    private var summaryBar: some View {
+        let active = app.downloads.filter(\.isActive).count
+        let queued = app.downloads.filter { $0.status == .queued }.count
+        let onDisk = DownloadsModel.sizeText(model.bytesOnDisk)
+        return HStack(spacing: Layout.spacing3) {
+            countStat(active, icon: "arrow.down.circle.fill", tint: theme.brand.color)
+            countStat(queued, icon: "clock", tint: theme.textSecondary.color)
+            countStat(completedCount, icon: "checkmark.circle.fill", tint: .green)
+            Spacer(minLength: Layout.spacing2)
+            Text("\(onDisk) on disk")
+                .font(Typography.metadata)
+                .foregroundStyle(theme.textSecondary.color)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
         }
-        .font(Typography.metadata)
-        .foregroundStyle(theme.textSecondary.color)
         .padding(.horizontal, Layout.spacing4)
-        .padding(.vertical, Layout.spacing3)
+        .padding(.vertical, Layout.spacing2)
         .background(theme.surface.color(opacity: 0.6))
-        .accessibilityElement()
+        .accessibilityElement(children: .ignore)
         .accessibilityLabel(
-            "Using \(DownloadsModel.sizeText(model.bytesOnDisk)) on disk, \(completedCount) completed"
+            "\(active) downloading, \(queued) queued, \(completedCount) completed, "
+                + "\(onDisk) on disk"
         )
+    }
+
+    private func countStat(_ count: Int, icon: String, tint: Color) -> some View {
+        HStack(spacing: 3) {
+            Image(systemName: icon)
+                .font(.caption2)
+                .foregroundStyle(tint)
+            Text("\(count)")
+                .font(Typography.badge)
+                .foregroundStyle(theme.textPrimary.color)
+                .monospacedDigit()
+        }
+        .opacity(count == 0 ? 0.45 : 1)
     }
 
     // MARK: - Controls
@@ -449,10 +368,13 @@ struct DownloadsScreen: View {
             .frame(width: Layout.minimumTarget, height: Layout.minimumTarget)
     }
 
-    private func iconButton(_ symbol: String, label: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) { icon(symbol) }
-            .buttonStyle(.plain)
-            .accessibilityLabel(label)
+    private func statusPill(_ status: DownloadStatus) -> some View {
+        Text(status.label)
+            .font(Typography.badge)
+            .foregroundStyle(statusColor(status))
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(statusColor(status).opacity(0.16), in: Capsule())
     }
 
     private var pendingConfirmation: Binding<Bool> {
@@ -466,13 +388,6 @@ struct DownloadsScreen: View {
         Binding(
             get: { app.settings.downloadSortKey },
             set: { value in Task { await model.setSortKey(value) } }
-        )
-    }
-
-    private var groupingBinding: Binding<DownloadGrouping> {
-        Binding(
-            get: { app.settings.downloadGrouping },
-            set: { value in Task { await model.setGrouping(value) } }
         )
     }
 
@@ -493,6 +408,33 @@ struct DownloadsScreen: View {
 
     // MARK: - Running actions
 
+    private func canPlay(_ item: DownloadItem) -> Bool {
+        item.isFinished || app.progressiveReadyIDs.contains(item.id)
+    }
+
+    private func movieAction(_ row: DownloadsModel.TitleRow) {
+        guard let item = row.playable else { return }
+        switch item.status {
+        case .failed:
+            Task { await app.retry(item.id) }
+        case .paused:
+            Task { await app.resume(item.id) }
+        case .downloading, .queued:
+            Task { await app.pause(item.id) }
+        case .completed:
+            break
+        }
+    }
+
+    private func movieHint(for row: DownloadsModel.TitleRow) -> String {
+        switch accessory(for: row) {
+        case .play: "Resume \(row.title)"
+        case .pause: "Pause \(row.title)"
+        case .retry: "Retry \(row.title)"
+        case .chevron: "Open \(row.title)"
+        }
+    }
+
     private func perform(_ action: BulkAction, on ids: [String]) {
         Task {
             for id in ids {
@@ -506,8 +448,12 @@ struct DownloadsScreen: View {
         }
     }
 
-    private func ask(_ kind: PendingDownloadAction.Kind, ids: [String], name: String) {
-        let isShow = ids.count > 1
+    private func ask(
+        _ kind: PendingDownloadAction.Kind,
+        ids: [String],
+        name: String,
+        isShow: Bool
+    ) {
         let message: String
         switch kind {
         case .cancel:
@@ -525,27 +471,6 @@ struct DownloadsScreen: View {
         )
     }
 
-    private func displayName(_ item: DownloadItem) -> String {
-        guard let label = item.episodeLabel else { return item.title }
-        return "\(item.title) · \(label)"
-    }
-
-    /// The title this download belongs to, at the season it came from.
-    ///
-    /// The row only stores an id and a name, which is enough to open the page:
-    /// `DetailScreen` re-resolves the real subject from the catalog.
-    private func catalogRoute(for item: DownloadItem) -> Route {
-        Route.catalog(
-            Subject(
-                id: item.subjectID,
-                title: item.title,
-                poster: item.poster,
-                kind: item.season == nil ? "movie" : "series"
-            ),
-            season: item.season
-        )
-    }
-
     private func playbackRequest(for item: DownloadItem) -> PlaybackRequest {
         PlaybackRequest(
             subjectID: item.subjectID,
@@ -559,6 +484,20 @@ struct DownloadsScreen: View {
     private func posterURL(_ poster: String?) -> URL? {
         guard let poster, !poster.isEmpty else { return nil }
         return URL(string: poster.hasPrefix("//") ? "https:" + poster : poster)
+    }
+}
+
+/// The trailing glyph on a library row: drill in, or act on a movie.
+private enum TitleAccessory {
+    case chevron, play, pause, retry
+
+    var symbol: String {
+        switch self {
+        case .chevron: "chevron.right"
+        case .play: "play.fill"
+        case .pause: "pause.fill"
+        case .retry: "arrow.clockwise"
+        }
     }
 }
 

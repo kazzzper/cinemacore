@@ -1,16 +1,19 @@
 import CinemacoreCore
 import SwiftUI
 
-/// One show's downloads, split by season and then by episode.
+/// One show's downloads, split by season.
 ///
-/// The queue is flat: an episode is a file, not a tree. Grouping by title is
-/// where the library shape belongs, so a show opens here instead of dumping
-/// every episode it owns onto the Downloads screen.
+/// The library opens a title here, the way a streaming service opens a show
+/// before an episode: the seasons are a selector, the episodes are the list,
+/// and each row owns its own play, pause and remove controls.
 struct DownloadShowScreen: View {
     let app: AppModel
+    let model: DownloadsModel
     let subjectID: String
 
+    @State private var selectedSeason: Int?
     @State private var pendingRemoval: DownloadItem?
+    @State private var confirmsRemoveShow = false
     @Environment(\.theme) private var theme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -20,22 +23,30 @@ struct DownloadShowScreen: View {
 
     private var title: String { items.first?.title ?? "Downloads" }
 
-    private var seasons: [SeasonGroup] {
-        Dictionary(grouping: items) { $0.season ?? 0 }
-            .map { season, members in
-                SeasonGroup(
-                    id: season,
-                    title: season == 0 ? "Episodes" : "Season \(season)",
-                    items: members.sorted { lhs, rhs in
-                        if lhs.episode != rhs.episode { return (lhs.episode ?? 0) < (rhs.episode ?? 0) }
-                        return lhs.id < rhs.id
-                    }
-                )
-            }
-            .sorted { $0.id < $1.id }
+    private var seasons: [Int] {
+        Array(Set(items.compactMap(\.season))).sorted()
+    }
+
+    private var activeSeason: Int? {
+        if let selectedSeason, seasons.contains(selectedSeason) { return selectedSeason }
+        return seasons.first
+    }
+
+    private var visibleItems: [DownloadItem] {
+        let filtered: [DownloadItem]
+        if let season = activeSeason {
+            filtered = items.filter { $0.season == season }
+        } else {
+            filtered = items
+        }
+        return filtered.sorted { lhs, rhs in
+            if lhs.episode != rhs.episode { return (lhs.episode ?? 0) < (rhs.episode ?? 0) }
+            return lhs.id < rhs.id
+        }
     }
 
     private var totalBytes: Int64 { items.reduce(into: 0) { $0 += $1.totalBytes } }
+    private var finishedCount: Int { items.filter(\.isFinished).count }
 
     var body: some View {
         ZStack {
@@ -48,23 +59,20 @@ struct DownloadShowScreen: View {
                     description: Text("It may have been removed. Go back to see the rest of the queue.")
                 )
             } else {
-                List {
-                    Section {
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: Layout.spacing3) {
                         header
-                            .listRowBackground(Color.clear)
-                            .listRowInsets(EdgeInsets())
-                    }
 
-                    ForEach(seasons) { season in
-                        Section(season.title) {
-                            ForEach(season.items) { item in
-                                row(item)
-                            }
+                        if seasons.count > 1 {
+                            seasonPicker
+                        }
+
+                        ForEach(visibleItems) { item in
+                            row(item)
                         }
                     }
+                    .padding(.bottom, Layout.spacing4)
                 }
-                .listStyle(.plain)
-                .scrollContentBackground(.hidden)
             }
         }
         .navigationTitle(title)
@@ -86,10 +94,23 @@ struct DownloadShowScreen: View {
         } message: { item in
             Text("\(displayName(item)) and its downloaded file are deleted. This cannot be undone.")
         }
+        .confirmationDialog(
+            "Remove \(title)?",
+            isPresented: $confirmsRemoveShow,
+            titleVisibility: .visible
+        ) {
+            Button("Remove Show", role: .destructive) {
+                Task {
+                    for item in items { await app.remove(item.id) }
+                }
+            }
+        } message: {
+            Text("Every downloaded episode of \(title) is deleted. This cannot be undone.")
+        }
     }
 
     private var header: some View {
-        HStack(spacing: Layout.spacing3) {
+        HStack(alignment: .top, spacing: Layout.spacing3) {
             RemoteImage(url: posterURL(items.first?.poster))
                 .frame(width: 72, height: 108)
                 .clipShape(RoundedRectangle(cornerRadius: Layout.radiusSmall, style: .continuous))
@@ -100,6 +121,7 @@ struct DownloadShowScreen: View {
                     .foregroundStyle(theme.textPrimary.color)
                 Text(
                     "\(items.count) episode\(items.count == 1 ? "" : "s")"
+                        + " · \(finishedCount) downloaded"
                         + (totalBytes > 0 ? " · \(DownloadsModel.sizeText(totalBytes))" : "")
                 )
                 .font(Typography.metadata)
@@ -109,12 +131,43 @@ struct DownloadShowScreen: View {
             Spacer(minLength: 0)
         }
         .padding(.horizontal, Layout.spacing4)
-        .padding(.vertical, Layout.spacing3)
+        .padding(.top, Layout.spacing3)
     }
 
-    @ViewBuilder
+    private var seasonPicker: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: Layout.spacing2) {
+                ForEach(seasons, id: \.self) { season in
+                    let isSelected = activeSeason == season
+                    Button {
+                        withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.18)) {
+                            selectedSeason = season
+                        }
+                    } label: {
+                        Text("Season \(season)")
+                            .font(Typography.metadata.weight(.semibold))
+                            .foregroundStyle(
+                                isSelected ? theme.background.color : theme.textSecondary.color
+                            )
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(
+                                isSelected
+                                    ? theme.textPrimary.color(opacity: 0.92)
+                                    : theme.surfaceElevated.color,
+                                in: Capsule()
+                            )
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityAddTraits(isSelected ? .isSelected : [])
+                }
+            }
+            .padding(.horizontal, Layout.spacing4)
+        }
+    }
+
     private func row(_ item: DownloadItem) -> some View {
-        HStack(spacing: Layout.spacing3) {
+        HStack(alignment: .top, spacing: Layout.spacing3) {
             VStack(alignment: .leading, spacing: Layout.spacing1) {
                 HStack(spacing: Layout.spacing2) {
                     if let label = item.episodeLabel {
@@ -122,16 +175,14 @@ struct DownloadShowScreen: View {
                             .font(Typography.metadata.weight(.medium))
                             .foregroundStyle(theme.textPrimary.color)
                     }
-                    Text(item.status.label)
-                        .font(Typography.badge)
-                        .foregroundStyle(statusColor(item.status))
+                    statusPill(item.status)
                 }
 
                 if let subtitle = item.episodeTitle, !subtitle.isEmpty {
                     Text(subtitle)
                         .font(Typography.rowTitle)
                         .foregroundStyle(theme.textPrimary.color)
-                        .lineLimit(1)
+                        .lineLimit(2)
                 }
 
                 if item.status == .failed, let failure = item.failure, !failure.isEmpty {
@@ -140,13 +191,22 @@ struct DownloadShowScreen: View {
                         .foregroundStyle(theme.brand.color)
                         .lineLimit(2)
                 } else if item.status != .completed {
-                    ProgressView(value: item.progress)
-                        .tint(theme.brand.color)
-                        .animation(reduceMotion ? nil : .linear(duration: 0.25), value: item.bytesWritten)
+                    HStack(spacing: Layout.spacing2) {
+                        ProgressView(value: item.progress)
+                            .tint(theme.brand.color)
+                            .animation(
+                                reduceMotion ? nil : .linear(duration: 0.25),
+                                value: item.bytesWritten
+                            )
+                        Text("\(Int((item.progress * 100).rounded()))%")
+                            .font(Typography.badge)
+                            .foregroundStyle(theme.textSecondary.color)
+                            .monospacedDigit()
+                    }
                 }
 
-                if let size = item.sizeText {
-                    Text(size)
+                if let detail = model.detailText(for: item) {
+                    Text(detail)
                         .font(Typography.metadata)
                         .foregroundStyle(theme.textSecondary.color)
                 }
@@ -159,7 +219,8 @@ struct DownloadShowScreen: View {
                 menu(item)
             }
         }
-        .padding(.vertical, Layout.spacing1)
+        .padding(.horizontal, Layout.spacing4)
+        .padding(.vertical, Layout.spacing2)
         .frame(minHeight: Layout.minimumTarget)
     }
 
@@ -200,6 +261,11 @@ struct DownloadShowScreen: View {
             if item.canResume {
                 Button { Task { await app.resume(item.id) } } label: { Label("Resume", systemImage: "play") }
             }
+            if item.status == .failed {
+                Button { Task { await app.retry(item.id) } } label: {
+                    Label("Retry", systemImage: "arrow.clockwise")
+                }
+            }
             Divider()
             Button(role: .destructive) {
                 pendingRemoval = item
@@ -216,13 +282,25 @@ struct DownloadShowScreen: View {
     private var toolbarItems: some ToolbarContent {
         ToolbarItem(placement: .topBarTrailing) {
             Menu {
-                Button { Task { await app.resumeAll() } } label: { Label("Resume All", systemImage: "play") }
-                Button { Task { await app.pauseAll() } } label: { Label("Pause All", systemImage: "pause") }
+                Button {
+                    Task {
+                        for item in items where item.canResume { await app.resume(item.id) }
+                    }
+                } label: {
+                    Label("Resume Show", systemImage: "play")
+                }
+                Button {
+                    Task {
+                        for item in items where item.isActive || item.status == .queued {
+                            await app.pause(item.id)
+                        }
+                    }
+                } label: {
+                    Label("Pause Show", systemImage: "pause")
+                }
                 Divider()
                 Button(role: .destructive) {
-                    Task {
-                        for item in items { await app.remove(item.id) }
-                    }
+                    confirmsRemoveShow = true
                 } label: {
                     Label("Remove Show", systemImage: "trash")
                 }
@@ -238,6 +316,15 @@ struct DownloadShowScreen: View {
             .font(.body)
             .foregroundStyle(theme.textPrimary.color)
             .frame(width: Layout.minimumTarget, height: Layout.minimumTarget)
+    }
+
+    private func statusPill(_ status: DownloadStatus) -> some View {
+        Text(status.label)
+            .font(Typography.badge)
+            .foregroundStyle(statusColor(status))
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(statusColor(status).opacity(0.16), in: Capsule())
     }
 
     private func statusColor(_ status: DownloadStatus) -> Color {
@@ -267,11 +354,5 @@ struct DownloadShowScreen: View {
     private func posterURL(_ poster: String?) -> URL? {
         guard let poster, !poster.isEmpty else { return nil }
         return URL(string: poster.hasPrefix("//") ? "https:" + poster : poster)
-    }
-
-    private struct SeasonGroup: Identifiable {
-        let id: Int
-        let title: String
-        let items: [DownloadItem]
     }
 }
