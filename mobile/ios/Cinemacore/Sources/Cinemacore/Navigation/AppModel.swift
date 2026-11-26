@@ -292,16 +292,45 @@ final class AppModel {
     ///
     /// Resolved at completion through the active catalog: captions live on a
     /// separate endpoint, and a title the provider has none for simply saves
-    /// none. A failure here must never touch the episode that did download.
+    /// none from it. A failure here must never touch the episode that did
+    /// download.
     private func captions(for item: DownloadItem) async -> [DownloadedSubtitle] {
-        guard let info = try? await repository.playInfo(
+        var tracks: [SubtitleTrack]
+        if let info = try? await repository.playInfo(
             subjectID: item.subjectID,
             season: item.season,
             episode: item.episode
-        ), !info.subtitles.isEmpty else { return [] }
+        ), !info.subtitles.isEmpty {
+            tracks = info.subtitles
+        } else {
+            // The player fills the picker from OpenSubtitles when the provider
+            // publishes no captions, so a download that kept only provider
+            // tracks would lose the subtitles the viewer was watching a minute
+            // earlier — and play offline with an empty subtitle sheet.
+            //
+            // The row carries no year, and Cinemeta uses it to tell a remake
+            // from its original; the catalog's own record is the only place
+            // that has it.
+            let subject = try? await repository.detail(id: item.subjectID)
+            tracks = await FreeSubtitles().tracks(for: FreeSubtitleRequest(
+                title: subject?.title ?? item.title,
+                year: subject?.year,
+                isSeries: subject?.isSeries ?? (item.season != nil),
+                season: item.season,
+                episode: item.episode,
+                language: settings.preferredLanguage
+            ))
+        }
+        guard !tracks.isEmpty else { return [] }
+        // The provider answers some series with one title-keyed caption URL for
+        // every episode. Without the episode in the cache key the second
+        // download reused the first one's file (the cache hands back an
+        // existing usable file), so it saved the wrong dialogue.
+        let scope = item.season.map { "\($0):\(item.episode ?? 0)" }
         return await SubtitleArchive(directory: downloadsDirectory).store(
-            info.subtitles,
-            headers: MediaRequest.headers(cookie: item.cookie)
+            tracks,
+            headers: MediaRequest.headers(cookie: item.cookie),
+            scope: scope
         )
     }
 

@@ -288,3 +288,44 @@ for different jobs, plus Linux where the logic actually lives.**
 
 Open: the tag lane has never run green; that needs a push (or a tag) and the uploaded bundle.
 - 2026-11-26T13:44:23.257Z — updated T-037: ios-build: ship CFBundleIdentifier/CFBundleExecutable/CFBundlePackageType in Info.plist; xcodebuild never injected them, only xtool did
+- 2026-11-26T14:37:13.661Z — claimed T-038 — iOS: community captions from Continue Watching and bundled with downloads
+- 2026-11-26T14:37:13.708Z — updated T-038: diagnosed: History rows stored PlaybackRequest.title ("Show · S1 E2"), so the Cinemeta lookup from Continue Watching searched a non-title and found nothing; stored-row playbacks also carry no year. Downloads archived provider tracks only and without an episode scope, and never archived at all when the media finished in the background URLSession.
+
+## T-038 — captions from Continue Watching, and captions inside a download
+
+**Reported:** subtitles do not load unless playback starts from the browse/detail page (e.g. from
+Continue Watching), and a finished download does not carry its subtitles.
+
+### Root causes
+- `PlayerModel.record()` wrote `PlaybackRequest.title`, which composes `"Show · S1 E2"` for the
+  now-playing card. History then rebuilt its subject from that string, so `hydrateFreeSubtitles`
+  asked Cinemeta for a title that is not a title and got no IMDb id → no community tracks. The
+  rebuilt subject also has no year, which is the tie-breaker between a remake and its original.
+- Downloads archived only `PlayInfo.subtitles` (provider). For the titles where the player is showing
+  community captions, that list is empty, so the archive saved nothing and the file played offline
+  with an empty subtitle sheet.
+- `SubtitleArchive.store` was called without `scope`. The provider keys captions on a title-level
+  resource id, so two episodes can answer with one URL; the second `prepare` then handed back the
+  first episode's file.
+- A direct download can complete inside the background `URLSession` while the process is suspended or
+  relaunched, so `complete()` ran with no caption provider installed and nothing ever asked again.
+
+### Change
+- History stores the show title; playbacks rebuilt from a stored row resolve the catalog subject once
+  (`captionLookupSubject`) for the community lookup (title + year + kind).
+- A community merge no longer takes the default away from an archived `.downloaded` track.
+- `AppModel.captions(for:)` archives provider captions, else the community tracks the player would
+  have offered, and passes the `season:episode` scope.
+- `DownloadEngine.start()` backfills captions for completed items that have none (once per item per
+  launch).
+- Core test: two episodes sharing one caption URL get distinct files under their own scope.
+
+### Verification
+- `swift test` (CinemacoreCore, Linux): 444 tests / 66 suites green.
+- `xtool dev build` (iOS app): `Build complete!`.
+- Android already resolves the detail subject and scopes the archive, but archives provider captions
+  only → T-039.
+- Device check pending (no iOS device/simulator here): the History list from older builds keeps the
+  old composed title; the caption lookup recovers through the detail request.
+- 2026-11-26T14:37:36.388Z — updated T-038: ios: history stores the show title + stored rows resolve the catalog subject for the community lookup; downloads archive provider captions or the community fallback, scoped per episode, with a launch backfill after a background completion; core 444 green, xtool build clean
+- 2026-11-26T14:37:36.434Z — updated T-038 -> review

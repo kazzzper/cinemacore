@@ -485,6 +485,28 @@
       "acceptance": "release.yml ios job uses xcodebuild only; unsigned device .ipa; ad-hoc simulator app; unit tests on an iOS Simulator",
       "updatedAt": "2026-11-26T13:44:23.256Z",
       "links": []
+    },
+    {
+      "id": "T-038",
+      "title": "iOS: community captions from Continue Watching and bundled with downloads",
+      "status": "review",
+      "module": "mobile/ios",
+      "owner": "buffy",
+      "deps": [],
+      "acceptance": "history rows store the show title; a stored-row playback resolves the catalog subject for the community lookup; a finished download archives provider captions, falling back to community tracks, scoped per episode; captions of items that completed in the background are backfilled at launch; core tests + xtool build green",
+      "updatedAt": "2026-11-26T14:37:36.433Z",
+      "links": []
+    },
+    {
+      "id": "T-039",
+      "title": "Android: bundle community captions with a download",
+      "status": "todo",
+      "module": "mobile/android",
+      "owner": null,
+      "deps": [],
+      "acceptance": "caption provider falls back to FreeSubtitles when the provider publishes none, and archived captions are scoped per episode; unit tests + assembleDebug green",
+      "updatedAt": "2026-11-26T14:36:30.738Z",
+      "links": []
     }
   ]
 }

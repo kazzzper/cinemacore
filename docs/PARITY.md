@@ -40,6 +40,8 @@ Legend: **✅** shipped · **🟡** partial / different behaviour · **⬜** mis
 | Tap toggles the web player chrome | ✅ | ✅ | Own touch listener observes without consuming |
 | Provider subtitles | ✅ | ✅ | |
 | Community subtitles (keyless, OpenSubtitles v3) | ✅ | ✅ | Ported with the same fixtures: Cinemeta id lookup, episode-marker guard, ranking |
+| Community captions on a playback opened from History | ✅ | ✅ | iOS stores the show title (not the composed player title) and resolves the catalog subject for the year; Android already records the detail subject |
+| Downloads carry their captions | ✅ | 🟡 | iOS archives provider tracks, else the community ones the player would show, scoped per episode, and backfills after a background completion; Android archives provider tracks only — T-039 |
 | Series subtitles keyed by the playing episode's resource id | ✅ | ✅ | |
 | Episode-scoped subtitle cache | ✅ | ✅ | `SubtitleCache` scope `season:episode` |
 | Default subtitle on start (English; community first on an episode) | ✅ | ✅ | |
@@ -49,6 +51,7 @@ Legend: **✅** shipped · **🟡** partial / different behaviour · **⬜** mis
 | Gap | Task | Note |
 |---|---|---|
 | Progressive playback of an in-progress download on Android | T-032 | Needs the range-capable loopback surface or a Media3 equivalent; iOS already ships it |
+| Community caption fallback when bundling a download on Android | T-039 | Provider-less titles download with an empty subtitle sheet offline |
 
 ## How to update this file
 

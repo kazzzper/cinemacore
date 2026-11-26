@@ -438,6 +438,9 @@ public actor DownloadEngine {
     /// app because it needs the catalog repository, which the queue has no
     /// business knowing about.
     private var captionProvider: (@Sendable (DownloadItem) async -> [DownloadedSubtitle])?
+    /// Completed items already queued for the launch backfill, so a second
+    /// `start()` cannot ask for the same captions twice.
+    private var captionsBackfilled: Set<String> = []
 
     private var queue: [DownloadItem] = []
     private var isLoaded = false
@@ -570,7 +573,25 @@ public actor DownloadEngine {
         isRunning = true
         ensureTransferPump()
         await reconcileOnce()
+        backfillCaptions()
         schedule()
+    }
+
+    /// Asks for the captions of items that finished while no provider was
+    /// installed.
+    ///
+    /// A direct download completes in the background URLSession even when the
+    /// process was suspended or relaunched, so `complete(_:)` had no caption
+    /// provider to call and the episode was left with an empty subtitle sheet —
+    /// the captions existed, they were just never fetched. One attempt per item
+    /// per launch: a title the sources have no captions for is not worth asking
+    /// about again every time the app opens.
+    private func backfillCaptions() {
+        guard captionProvider != nil else { return }
+        for item in queue where item.status == .completed && item.subtitles.isEmpty {
+            guard captionsBackfilled.insert(item.id).inserted else { continue }
+            Task { [weak self] in await self?.attachSubtitles(to: item) }
+        }
     }
 
     public func pause(_ id: String) async {

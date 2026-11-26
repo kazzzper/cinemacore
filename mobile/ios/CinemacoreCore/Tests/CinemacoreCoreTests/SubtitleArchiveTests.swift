@@ -107,6 +107,28 @@ struct SubtitleArchiveTests {
         #expect(track.format == "vtt")
     }
 
+    @Test("two episodes answering with one caption URL get a file each")
+    func episodeScopeSeparatesSharedURLs() async throws {
+        ArchiveCaptionProtocol.reset()
+        ArchiveCaptionProtocol.stub("/shared.srt", body: srt)
+        let directory = directory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let archive = SubtitleArchive(directory: directory, session: ArchiveCaptionProtocol.session())
+        // The provider keys captions on a title-level id, so two episodes can
+        // be handed the *same* URL. Without the episode in the cache key the
+        // second episode's file was the first one's, silently.
+        let track = SubtitleTrack(language: "English", url: "https://caption.test/shared.srt", format: "srt")
+
+        let first = try #require(await archive.store([track], scope: "1:1").first)
+        let second = try #require(await archive.store([track], scope: "1:2").first)
+
+        #expect(first.fileName != second.fileName)
+        for subtitle in [first, second] {
+            let file = directory.appendingPathComponent(subtitle.fileName)
+            #expect(FileManager.default.fileExists(atPath: file.path))
+        }
+    }
+
     @Test("one dead track loses its language, never the caption that worked")
     func partialFailure() async throws {
         ArchiveCaptionProtocol.reset()

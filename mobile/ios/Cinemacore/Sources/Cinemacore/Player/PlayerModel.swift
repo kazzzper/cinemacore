@@ -223,6 +223,16 @@ final class PlayerModel {
     private var localRejection: String?
     private var isFallingBackFromProgressive = false
     private var lastAudibleVolume = 1.0
+    /// The catalog's own record for this title, fetched when the playback
+    /// request came from a stored row (History, Downloads).
+    ///
+    /// Those rows keep only what a resume needs, so the subject has no year —
+    /// and older History rows stored the composed "Show · S1 E2" line as the
+    /// title. Cinemeta is searched by title and uses the year to separate a
+    /// remake from its original, so the community lookup answered for the
+    /// wrong film or for nothing at all, and only a playback opened from a
+    /// detail page (which passes the full subject) had captions.
+    private var catalogSubject: Subject?
     /// Screen brightness this playback has taken over, 0…1.
     ///
     /// The picture is drawn by AVPlayer into a layer of the app's own view, so
@@ -688,10 +698,14 @@ final class PlayerModel {
         }
 
         subtitleAvailability = .loading
+        let subject = await captionLookupSubject()
+        guard !stopped, !Task.isCancelled, case .loaded = state else { return }
         let lookup = FreeSubtitleRequest(
-            title: request.subject.title,
-            year: request.subject.year,
-            isSeries: isSeries,
+            title: subject.title,
+            year: subject.year,
+            // The row's own kind is authoritative; an episode number is the
+            // fallback for a source that never fills `kind` in.
+            isSeries: subject.isSeries || request.episode != nil,
             season: request.season,
             episode: request.episode?.number,
             language: app.settings.preferredLanguage
@@ -719,7 +733,11 @@ final class PlayerModel {
         // `subtitleChosen` is. Re-applying the default here is what moves a
         // series episode off the provider's title-keyed caption file and onto
         // the one that was asked about this episode.
-        guard !subtitleChosen else { return }
+        // A saved caption is what a download promises: already episode-scoped
+        // and needing no connection, so a network lookup must not take the
+        // default back from it. The community tracks still join the list for a
+        // viewer who wants a better-timed file.
+        guard !subtitleChosen, selectedSubtitle?.provider != .downloaded else { return }
         selectedSubtitle = SubtitleTracks.defaultTrack(
             in: merged,
             isOriginalAudio: selectedDub?.isOriginal != false,
@@ -727,6 +745,23 @@ final class PlayerModel {
             prefersCommunity: request.episode != nil
         )
         loadSubtitles()
+    }
+
+    /// The full record behind this playback when the request was rebuilt from
+    /// a stored row.
+    ///
+    /// Resolved at most once per playback, and only when the request carries no
+    /// year: a subject from the detail screen already has everything the
+    /// community lookup needs. A failed fetch falls back to the row's own
+    /// fields, which is the behaviour before this existed.
+    private func captionLookupSubject() async -> Subject {
+        if let catalogSubject { return catalogSubject }
+        if request.subject.year != nil { return request.subject }
+        guard let detail = try? await app.repository.detail(id: request.subject.id) else {
+            return request.subject
+        }
+        catalogSubject = detail
+        return detail
     }
 
     /// Re-runs the community lookup after it failed, without disturbing
@@ -2099,7 +2134,12 @@ final class PlayerModel {
         guard duration > 0 else { return }
         let point = ResumePoint(
             subjectID: request.subject.id,
-            title: request.title,
+            // The show's own title, not `PlaybackRequest.title`: that composes
+            // "Show · S1 E2" for the now-playing card, and a History row that
+            // stored it could not be looked up by title when the player rebuilt
+            // the request from it — the community caption search then found
+            // nothing for anything opened from Continue Watching.
+            title: request.subject.title,
             poster: request.subject.poster,
             season: request.season,
             episode: request.episode?.number,
