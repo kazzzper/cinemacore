@@ -67,6 +67,25 @@ node tasks/bin/tasks.mjs board            # regenerate BOARD.md
   task and update [`docs/PARITY.md`](docs/PARITY.md) in the same session — see
   [`rules/09-platform-parity.md`](rules/09-platform-parity.md).
 
+### Versioning and the changelog (never hand-edit)
+
+- [`VERSION`](VERSION) is canonical and only `scripts/release` writes it. `make check` validates the
+  format; tags are `v<version>` and must match, or CI refuses the release.
+- An increment is *recorded once*, by `make release ARGS="patch --channel beta"`
+  ([`scripts/release`](scripts/release)): it bumps `VERSION`, prepends the section generated from the
+  Conventional Commits since the last reachable tag, commits `chore(release): vX.Y.Z[-channel.N]`,
+  and creates the annotated tag locally. It never pushes.
+- `CHANGELOG.md` is generated output. Never edit it by hand — fix the commit message instead.
+  `feat`/`fix`/`perf`/`refactor`/`docs`/`build`/`ci`/`test`/`style` and their scopes are what the
+  changelog stores; `chore(tasks)` and `chore(release)` are hidden. `!` or a `BREAKING CHANGE:`
+  footer creates the breaking-note section.
+- Preview before bumping: `make changelog` prints what the next section would record, and
+  `make release-dry-run ARGS="patch --channel beta"` shows the version, tag, build number and
+  changelog preview without writing anything.
+- Install the current build on a connected iPhone with `make dev-ios ARGS="--usb"` (build only:
+  `make ios-xtool`; unsigned `.ipa`: `make ios-ipa`). Record the installed version and commit in
+  `tasks/progress/<agent>.md`. Full scheme and artifact rules: [`RELEASING.md`](RELEASING.md).
+
 ## 3. Rules (follow or the change is rejected)
 
 | File | Domain |

@@ -329,3 +329,21 @@ Continue Watching), and a finished download does not carry its subtitles.
   old composed title; the caption lookup recovers through the detail request.
 - 2026-11-26T14:37:36.388Z — updated T-038: ios: history stores the show title + stored rows resolve the catalog subject for the community lookup; downloads archive provider captions or the community fallback, scoped per episode, with a launch backfill after a background completion; core 444 green, xtool build clean
 - 2026-11-26T14:37:36.434Z — updated T-038 -> review
+- 2026-11-26T14:48:26.855Z — claimed T-040 — Version system: changelog preview + agent contract, and a correct since-last-tag range
+- 2026-11-26T14:48:26.900Z — updated T-040: found and fixed --range <tag> being passed to git log verbatim, which re-listed the whole previous release; added make changelog preview and the AGENTS.md versioning/install contract
+
+## T-040 — version increments recorded in the changelog
+
+The release path already wrote `VERSION`, prepended a generated `CHANGELOG.md` section, committed
+`chore(release)` and tagged. Two gaps made it unreliable as the record:
+
+- `scripts/changelog --range <tag>` passed the tag to `git log` unchanged, which lists history *up to*
+  that tag, so the next section re-recorded the previous release. It now means `tag..HEAD`, while an
+  explicit `a..b` is honoured.
+- Nothing told agents the contract. `AGENTS.md` now says: `VERSION` is written only by
+  `scripts/release`, `CHANGELOG.md` is generated (fix the commit, not the file), `make changelog`
+  previews, `make release` records once and tags locally, and `make dev-ios ARGS="--usb"` installs on
+  a connected iPhone with the installed version recorded in `tasks/progress/<agent>.md`.
+
+Verification: `make changelog` after the fix lists the nine commits since `v0.0.1-beta.2` instead of
+the entire prior history; `make release-dry-run` shows the same section.

@@ -34,12 +34,21 @@ function lastTag() {
   }
 }
 
+/// `--range` names the previous release, so it means "everything since" that
+/// revision. Handing a bare tag to `git log` lists the history *up to* it
+/// instead, which would re-record the whole previous release in every section.
+/// An explicit `a..b` range is still honoured as written.
+function rangeSpec(range) {
+  if (!range) return 'HEAD';
+  return range.includes('..') ? range : `${range}..HEAD`;
+}
+
 function commits(range) {
   const output = git([
     'log',
     '--no-merges',
     '--pretty=format:%s%x1f%b%x1e',
-    range || 'HEAD',
+    rangeSpec(range),
   ]);
   if (!output) return [];
 
@@ -117,7 +126,7 @@ function option(name) {
 
 const version = option('--version');
 if (!version) {
-  console.error('usage: scripts/changelog --version X.Y.Z[-channel.N] [--range <git-range>]');
+  console.error('usage: scripts/changelog --version X.Y.Z[-channel.N] [--range <from-rev|a..b>]');
   process.exit(2);
 }
 

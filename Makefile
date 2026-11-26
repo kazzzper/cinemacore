@@ -5,7 +5,7 @@ IOS := mobile/ios/Cinemacore
 ANDROID := mobile/android
 RELEASE_DIR := $(CURDIR)/release
 
-.PHONY: help version check tag build test test-go test-swift test-android \
+.PHONY: help version check tag changelog build test test-go test-swift test-android \
 	dev-ios dev-android \
 	ios-xtool ios-ipa ios-xcode ios-release android android-apk android-release \
 	tag-release release release-dry-run web
@@ -16,6 +16,7 @@ help:
 	  '' \
 	  '  make version                 generate iOS xcconfig + CI plist from VERSION' \
 	  '  make check                   validate VERSION and tag format' \
+	  '  make changelog               preview the section the next release records' \
 	  '  make tag                     tag the current commit with VERSION (local)' \
 	  '  make build                   versioned Go build + versioned debug APK' \
 	  '  make test                    Go race suite + Swift core tests + Android tests' \
@@ -51,6 +52,13 @@ check:
 # Tag the version already in VERSION; `make release` bumps and tags in one go.
 tag:
 	./scripts/tag
+
+# Read-only: what scripts/release would prepend to CHANGELOG.md from the
+# Conventional Commits since the last reachable tag. The file itself is written
+# only by a real release, so an increment is recorded exactly once.
+changelog:
+	@range=$$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null || true); \
+	./scripts/changelog --version "$$(cat VERSION)" $${range:+--range "$$range"}
 
 build: version
 	go build ./...

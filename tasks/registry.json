@@ -507,6 +507,17 @@
       "acceptance": "caption provider falls back to FreeSubtitles when the provider publishes none, and archived captions are scoped per episode; unit tests + assembleDebug green",
       "updatedAt": "2026-11-26T14:36:30.738Z",
       "links": []
+    },
+    {
+      "id": "T-040",
+      "title": "Version system: changelog preview + agent contract, and a correct since-last-tag range",
+      "status": "doing",
+      "module": "scripts",
+      "owner": "buffy",
+      "deps": [],
+      "acceptance": "make changelog prints the section the next release records; scripts/changelog treats --range <tag> as tag..HEAD; AGENTS.md documents VERSION/CHANGELOG/dev-ios; a release records exactly one CHANGELOG section",
+      "updatedAt": "2026-11-26T14:48:26.900Z",
+      "links": []
     }
   ]
 }

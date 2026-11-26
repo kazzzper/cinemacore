@@ -84,11 +84,17 @@ Run on `main`, with a clean tracked tree:
 ```bash
 git checkout main
 git pull
+make changelog                                        # what the next section records
 make release-dry-run ARGS="patch --channel beta"      # inspect first
 make release ARGS="patch --channel beta"
 git push origin main
 git push origin v0.0.1-beta.2                         # triggers .github/workflows/release.yml
 ```
+
+`make changelog` is read-only: it prints the section `scripts/release` would
+prepend, from the Conventional Commits since the last reachable tag. `--range`
+names that previous tag and means "since"; an explicit `a..b` range is also
+accepted. `CHANGELOG.md` is written only by a real release.
 
 `make release` is a thin wrapper around `scripts/release`. The same script is
 what CI assumes when it builds and verifies the artifacts.
